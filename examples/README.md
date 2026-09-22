@@ -8,20 +8,23 @@ Start with the accounts-payable story if you are new to ProofAuth:
 cargo run --example payment_workflow
 ```
 
-Priya has the `finance.approver` role, which inherits `finance.viewer`. The
-example shows an inherited `payment.view` permission, a direct
+Priya wants to review and then approve a payment. Her client sends each intent
+as an `AuthorizationRequest` addressed to `payment-api`. Priya has the
+`finance.approver` role, which inherits `finance.viewer`. The example shows an
+inherited `payment.view` permission, a direct
 `payment.approve` permission, a resource-scoped denial, and an explicit
 suspension deny that overrides the allow. It demonstrates local RBAC evaluation
 first so the identity, policy, request, and decision are easy to follow. Its
-terminal output narrates every attempt and prints formatted, syntax-colored
-JSON for the exact `AuthorizationRequest` bound to the `payment-api` consumer.
-For the allowed approval, it saves `identity.json`, `policy.json`, and
-`request.json`; creates the signed canonical `offline-bundle.json`; and
-hex-encodes those exact bundle bytes as `offline-bundle.hex`. All five files are
-written under `target/proofauth-payment-demo/`. The terminal explains that
-Priya sends only the `.hex` file to the consumer. The deterministic example
-combines issuer and subject operations in one process; a production deployment
-must keep those private keys separate.
+terminal output starts with Priya's goal and prints formatted, syntax-colored
+JSON for the exact `AuthorizationRequest` she sends to `payment-api`.
+It saves the initial view as `view-request.json`. For the allowed approval, it
+saves `identity.json`, `policy.json`, and `request.json`; creates the signed
+canonical `offline-bundle.json`; and hex-encodes those exact bundle bytes as
+`offline-bundle.hex`. All six files are written under
+`target/proofauth-payment-demo/`. The terminal explains that Priya sends only
+the `.hex` file to the consumer. The deterministic example combines issuer and
+subject operations in one process; a production deployment must keep those
+private keys separate.
 
 The permission names are chosen by the application. ProofAuth matches those
 strings and enforces the policy's tenant, workflow, resource, and role scopes.

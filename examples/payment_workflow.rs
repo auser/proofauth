@@ -156,7 +156,7 @@ fn print_payload(
     style: &OutputStyle,
 ) -> Result<(), serde_json::Error> {
     let label = format!(
-        "AuthorizationRequest JSON bound to consumer `{}`:",
+        "Priya sends this AuthorizationRequest to `{}`:",
         request.recipient
     );
     println!("   {}", style.paint("1;35", &label));
@@ -235,20 +235,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
     };
 
+    let output_dir = PathBuf::from("target/proofauth-payment-demo");
+    let identity_path = output_dir.join("identity.json");
+    let policy_path = output_dir.join("policy.json");
+    let view_request_path = output_dir.join("view-request.json");
+    let request_path = output_dir.join("request.json");
+    let bundle_json_path = output_dir.join("offline-bundle.json");
+    let bundle_hex_path = output_dir.join("offline-bundle.hex");
+    fs::create_dir_all(&output_dir)?;
+    write_pretty_json(&identity_path, &priya)?;
+    write_pretty_json(&policy_path, &policy)?;
+
     println!("{}", style.paint("1;36", "=== Acme payment desk ==="));
-    println!("Acme's issuer identifies Priya as a finance.approver for tenant acme.");
-    println!("The policy lets approvers inherit payment viewing permission.");
+    println!("Priya wants to review payment-8472 and, if it is correct, approve it.");
+    println!("Her client sends recipient-bound JSON requests to the payment-api.");
+    println!("Acme's issuer has identified Priya as a finance.approver for tenant acme.");
     println!();
 
     let view = payment_request("payment.view", "payment-8472");
+    write_pretty_json(&view_request_path, &view)?;
     println!(
         "{}",
         style.paint(
             "1;34",
-            "1. Priya opens payment-8472 before deciding whether to approve it."
+            "1. Priya wants to view payment-8472 before deciding whether to approve it."
         )
     );
     print_payload(&view, &style)?;
+    println!("   Saved request: {}", view_request_path.display());
     let view_decision = authorize(&priya, &view, &policy)?;
     let view_result = format!(
         "Decision: ALLOW through inherited role {}.",
@@ -258,11 +272,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     let approve = payment_request("payment.approve", "payment-8472");
+    write_pretty_json(&request_path, &approve)?;
     println!(
         "{}",
-        style.paint("1;34", "2. Priya approves the payment she reviewed.")
+        style.paint(
+            "1;34",
+            "2. Priya now wants to approve the payment she reviewed."
+        )
     );
     print_payload(&approve, &style)?;
+    println!("   Saved request: {}", request_path.display());
     let approve_decision = authorize(&priya, &approve, &policy)?;
     let approve_result = format!(
         "Decision: ALLOW through matched role {}.",
@@ -271,66 +290,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   {}", style.paint("1;32", &approve_result));
     println!();
 
-    let other_payment = payment_request("payment.approve", "payment-9000");
     println!(
         "{}",
         style.paint(
             "1;34",
-            "3. Priya tries to approve payment-9000, which is outside her policy scope."
-        )
-    );
-    print_payload(&other_payment, &style)?;
-    expect_denied(&priya, &other_payment, &policy)?;
-    println!(
-        "   {}",
-        style.paint(
-            "1;31",
-            "Decision: DENY because the resource is outside policy scope."
-        )
-    );
-    println!();
-
-    let mut suspended_priya = priya.clone();
-    suspended_priya.roles.push("finance.suspended".into());
-    println!(
-        "{}",
-        style.paint(
-            "1;34",
-            "4. Acme suspends Priya but her identity still contains the approver role."
-        )
-    );
-    print_payload(&approve, &style)?;
-    expect_denied(&suspended_priya, &approve, &policy)?;
-    println!(
-        "   {}",
-        style.paint(
-            "1;31",
-            "Decision: DENY because the suspension deny overrides the allow."
-        )
-    );
-    println!();
-
-    let output_dir = PathBuf::from("target/proofauth-payment-demo");
-    let identity_path = output_dir.join("identity.json");
-    let policy_path = output_dir.join("policy.json");
-    let request_path = output_dir.join("request.json");
-    let bundle_json_path = output_dir.join("offline-bundle.json");
-    let bundle_hex_path = output_dir.join("offline-bundle.hex");
-    fs::create_dir_all(&output_dir)?;
-    write_pretty_json(&identity_path, &priya)?;
-    write_pretty_json(&policy_path, &policy)?;
-    write_pretty_json(&request_path, &approve)?;
-
-    println!(
-        "{}",
-        style.paint(
-            "1;34",
-            "5. Priya's producer saves the approved request and its authorization inputs."
+            "3. Priya's client prepares proof for the allowed approval request."
         )
     );
     println!("   Identity claims: {}", identity_path.display());
     println!("   Policy:          {}", policy_path.display());
-    println!("   Initial request: {}", request_path.display());
+    println!("   Approval request: {}", request_path.display());
     println!(
         "   The request is not hex-encoded alone; it becomes the request field in a signed bundle."
     );
@@ -366,10 +335,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .sign(&issuer);
     let bundle = OfflineBundle {
-        identity_claims: Some(priya),
+        identity_claims: Some(priya.clone()),
         identity_commitment: commitment,
-        policy,
-        request: approve,
+        policy: policy.clone(),
+        request: approve.clone(),
         presentation,
         revocation_snapshot: snapshot,
         issuer_public_key: issuer.verifying_key().to_bytes().to_vec(),
@@ -393,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "6. The producer signs the request, builds the bundle, and hex-encodes it."
+            "4. The issuer and Priya's client sign, bundle, and hex-encode the proof."
         )
     );
     println!(
@@ -416,12 +385,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     );
     println!("   Verified: the hex decodes to the saved bundle JSON.");
+    println!("   Priya now sends only offline-bundle.hex to the payment-api consumer.");
     println!();
+
+    println!(
+        "{}",
+        style.paint("1;36", "=== What if access should be denied? ===")
+    );
+    let other_payment = payment_request("payment.approve", "payment-9000");
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "5. Priya wants to approve payment-9000, which is outside her policy scope."
+        )
+    );
+    print_payload(&other_payment, &style)?;
+    expect_denied(&priya, &other_payment, &policy)?;
+    println!(
+        "   {}",
+        style.paint(
+            "1;31",
+            "Decision: DENY because the resource is outside policy scope."
+        )
+    );
+    println!();
+
+    let mut suspended_priya = priya.clone();
+    suspended_priya.roles.push("finance.suspended".into());
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "6. After Acme suspends Priya, she sends the original approval request again."
+        )
+    );
+    print_payload(&approve, &style)?;
+    expect_denied(&suspended_priya, &approve, &policy)?;
+    println!(
+        "   {}",
+        style.paint(
+            "1;31",
+            "Decision: DENY because the suspension deny overrides the allow."
+        )
+    );
+    println!();
+
     println!("Producer flow:");
     println!("  identity.json + policy.json + request.json");
     println!("    -> signed offline-bundle.json");
     println!("    -> offline-bundle.hex");
-    println!("Priya sends only offline-bundle.hex to the payment-api consumer.");
+    println!("Priya sends offline-bundle.hex to the payment-api consumer.");
     println!(
         "The consumer also needs a trusted registry and independently pinned root public key."
     );

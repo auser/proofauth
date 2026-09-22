@@ -83,10 +83,11 @@ contacts no identity, policy, registry, or revocation server.
 
 ## Start here: the Acme payment desk
 
-Imagine that Priya works in Acme's accounts-payable team. She needs to view a
-payment before approving it, but she must not approve payments outside her
-assigned workflow. If her account is suspended, an explicit deny must win even
-though she still has the approver role.
+Imagine that Priya works in Acme's accounts-payable team. She wants to review
+payment `payment-8472` and, if it is correct, approve it. Her client expresses
+each intent as a recipient-bound JSON request sent to `payment-api`. Priya must
+not approve payments outside her assigned workflow, and an explicit suspension
+deny must win even if her identity still contains the approver role.
 
 ProofAuth represents that story with five pieces:
 
@@ -95,7 +96,7 @@ ProofAuth represents that story with five pieces:
 | Identity claims | Acme's issuer says Priya belongs to tenant `acme` and has role `finance.approver`. |
 | Role hierarchy | `finance.approver` inherits `finance.viewer`, so approvers can also view. |
 | Policy rules | View and approve rules are limited to workflow `ap-2026` and resource `payment-8472`. |
-| Request | The payment API asks whether Priya may perform `payment.view` or `payment.approve`. |
+| Request | Priya's client sends `payment.view` or `payment.approve`, addressed to `payment-api`. |
 | Decision | Matching allow rules grant access, but a matching `finance.suspended` deny overrides them. |
 
 Run the story:
@@ -105,18 +106,19 @@ just payment-demo
 # equivalent: cargo run --example payment_workflow
 ```
 
-The program narrates each step and prints formatted, syntax-colored JSON for
-the exact `AuthorizationRequest` bound to the `payment-api` consumer.
+The program starts with what Priya wants to do, then prints the formatted,
+syntax-colored `AuthorizationRequest` her client sends to `payment-api`.
 Colors are enabled on an interactive terminal and disabled when output is
 redirected or `NO_COLOR` is set. For example, the first decision includes:
 
 ```text
 === Acme payment desk ===
-Acme's issuer identifies Priya as a finance.approver for tenant acme.
-The policy lets approvers inherit payment viewing permission.
+Priya wants to review payment-8472 and, if it is correct, approve it.
+Her client sends recipient-bound JSON requests to the payment-api.
+Acme's issuer has identified Priya as a finance.approver for tenant acme.
 
-1. Priya opens payment-8472 before deciding whether to approve it.
-   AuthorizationRequest JSON bound to consumer `payment-api`:
+1. Priya wants to view payment-8472 before deciding whether to approve it.
+   Priya sends this AuthorizationRequest to `payment-api`:
    {
      "recipient": "payment-api",
      "tenant": "acme",
@@ -130,11 +132,16 @@ The policy lets approvers inherit payment viewing permission.
    Decision: ALLOW through inherited role finance.viewer.
 ```
 
-It continues with the approve, out-of-scope, and suspended-user cases. For the
-allowed approval, the demo saves the producer inputs and makes the conversion
-chain explicit:
+After the view is allowed, Priya sends a second request to approve the payment.
+The happy path remains uninterrupted through signing and transport creation;
+the out-of-scope and suspended-user cases follow afterward as denial branches.
+The view request is saved as `view-request.json`. The approval request is saved
+as `request.json`, and that is the request embedded in the bundle. The demo
+makes the conversion chain explicit:
 
 ```text
+target/proofauth-payment-demo/view-request.json -> view decision
+
 target/proofauth-payment-demo/identity.json
   + target/proofauth-payment-demo/policy.json
   + target/proofauth-payment-demo/request.json
@@ -158,10 +165,11 @@ permissions. Your application chooses names such as `payment.view` and
 `payment.approve`; ProofAuth checks them against `PermissionRule.permission`
 along with the tenant, workflow, resource, identity lifetime, and role graph.
 
-The first four steps isolate the local RBAC decision. Steps five and six show
-the producer inputs, signing, bundling, and transport encoding. The complete
-creator/consumer flow below then verifies this kind of bundle using a signed
-registry, pinned registry-root key, and local trust material.
+Steps one and two follow Priya's view and approval requests. Steps three and
+four show exactly how the allowed approval becomes the `.hex` file she sends.
+Steps five and six demonstrate denial branches. The complete creator/consumer
+flow below verifies this kind of bundle using a signed registry, pinned
+registry-root key, and local trust material.
 
 ## Generate starter JSON
 
