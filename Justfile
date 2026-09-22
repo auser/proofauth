@@ -61,7 +61,7 @@ pages-check:
     test -f docs/index.html
     jq -e . docs/offline-bundle.json >/dev/null
     jq -e . docs/registry.json >/dev/null
-    node -e 'const fs=require("fs"); const html=fs.readFileSync("docs/index.html", "utf8"); const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]; if (scripts.length !== 1) throw new Error("expected one inline script"); new Function(scripts[0][1]);'
+    node -e 'const fs=require("fs"); const html=fs.readFileSync("docs/index.html", "utf8"); const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]; if (scripts.length === 0) throw new Error("expected inline scripts"); scripts.forEach((script) => new Function(script[1]));'
     cargo run --quiet -- bundle-verify \
         "$(cargo run --quiet -- bundle-seal @docs/offline-bundle.json)" \
         @docs/registry.json \

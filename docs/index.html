@@ -4,19 +4,102 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Walk through a real ProofAuth offline authorization proof, from Priya's payment request to consumer verification.">
-    <title>ProofAuth — An offline authorization story</title>
+    <title>ProofAuth payment authorization demo</title>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem("proofauth-theme");
+        if (savedTheme === "light" || savedTheme === "dark") document.documentElement.dataset.theme = savedTheme;
+      } catch (_) {}
+    </script>
     <style>
       :root {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --surface: #ffffff;
+        --surface-subtle: #f1f3f5;
+        --border: #d9dee5;
+        --border-strong: #b7c0ca;
+        --text: #1e2933;
+        --muted: #5f6c79;
+        --accent: #1769a6;
+        --accent-hover: #0e4f81;
+        --accent-soft: #eaf3fa;
+        --success: #18794e;
+        --success-soft: #eaf6ef;
+        --danger: #b42318;
+        --danger-soft: #fff0ee;
+        --warning: #8a5a00;
+        --code-bg: #f4f6f8;
+        --code-text: #25313d;
+        --token-key: #075985;
+        --token-string: #34712f;
+        --token-number: #9a5b13;
+        --token-boolean: #7e3a91;
+        --token-null: #a12b36;
+        --shadow: 0 1px 2px rgb(15 23 42 / .06), 0 8px 24px rgb(15 23 42 / .04);
+        --ink: var(--bg);
+        --panel: var(--surface);
+        --panel-2: var(--surface-subtle);
+        --line: var(--border);
+        --cyan: var(--success);
+        --amber: var(--warning);
+        --red: var(--danger);
+      }
+
+      :root[data-theme="dark"] {
         color-scheme: dark;
-        --ink: #07111f;
-        --panel: #0d1b2c;
-        --panel-2: #12243a;
-        --line: #29425e;
-        --text: #f4f8fb;
-        --muted: #a7b7c8;
-        --cyan: #47e6d1;
-        --amber: #ffc766;
-        --red: #ff7272;
+        --bg: #11161d;
+        --surface: #171e27;
+        --surface-subtle: #1d2631;
+        --border: #303b47;
+        --border-strong: #4a5867;
+        --text: #edf2f7;
+        --muted: #a6b0bc;
+        --accent: #72b7ea;
+        --accent-hover: #a7d4f4;
+        --accent-soft: #172d40;
+        --success: #64cf98;
+        --success-soft: #173125;
+        --danger: #ff8b82;
+        --danger-soft: #3a211f;
+        --warning: #e3b45d;
+        --code-bg: #0d1117;
+        --code-text: #e6edf3;
+        --token-key: #79c0ff;
+        --token-string: #a5d6a7;
+        --token-number: #e3b341;
+        --token-boolean: #d2a8ff;
+        --token-null: #ff9b9b;
+        --shadow: 0 1px 2px rgb(0 0 0 / .18), 0 10px 28px rgb(0 0 0 / .12);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme]) {
+          color-scheme: dark;
+          --bg: #11161d;
+          --surface: #171e27;
+          --surface-subtle: #1d2631;
+          --border: #303b47;
+          --border-strong: #4a5867;
+          --text: #edf2f7;
+          --muted: #a6b0bc;
+          --accent: #72b7ea;
+          --accent-hover: #a7d4f4;
+          --accent-soft: #172d40;
+          --success: #64cf98;
+          --success-soft: #173125;
+          --danger: #ff8b82;
+          --danger-soft: #3a211f;
+          --warning: #e3b45d;
+          --code-bg: #0d1117;
+          --code-text: #e6edf3;
+          --token-key: #79c0ff;
+          --token-string: #a5d6a7;
+          --token-number: #e3b341;
+          --token-boolean: #d2a8ff;
+          --token-null: #ff9b9b;
+          --shadow: 0 1px 2px rgb(0 0 0 / .18), 0 10px 28px rgb(0 0 0 / .12);
+        }
       }
 
       * { box-sizing: border-box; }
@@ -24,133 +107,145 @@
       body {
         margin: 0;
         min-width: 320px;
-        background: var(--ink);
+        background: var(--bg);
         color: var(--text);
-        font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
       button, a { font: inherit; }
       button { color: inherit; }
-      a { color: var(--cyan); }
-      a:hover { color: #8df4e7; }
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
       code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 
-      .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+      .shell { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
       header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        min-height: 72px;
+        min-height: 64px;
         border-bottom: 1px solid var(--line);
       }
 
-      .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .02em; }
-      .mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--cyan); color: var(--cyan); }
+      .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -.01em; }
+      .brand span { color: var(--muted); font-size: .82rem; font-weight: 500; }
       .quiet { color: var(--muted); font-size: .875rem; }
-      .status { display: flex; gap: 8px; align-items: center; }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 0 4px rgb(71 230 209 / .12); }
-      .header-links { display: flex; align-items: center; gap: 22px; }
+      .header-links { display: flex; align-items: center; gap: 18px; }
       .header-links a { color: var(--muted); text-decoration: none; font-size: .9rem; }
       .header-links a:hover { color: var(--text); }
+      .theme-control { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: .86rem; }
+      .theme-control select { min-height: 34px; padding: 4px 26px 4px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+      .theme-control select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-      main { padding: 52px 0 80px; }
-      .intro { max-width: 760px; margin-bottom: 32px; }
-      .eyebrow { margin: 0 0 10px; color: var(--cyan); font: 700 .78rem/1.2 "SFMono-Regular", Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
-      h1 { max-width: 720px; margin: 0; font-size: clamp(2.25rem, 5vw, 4.8rem); line-height: .98; letter-spacing: -.055em; }
-      .lede { max-width: 680px; margin: 22px 0 0; color: var(--muted); font-size: 1.12rem; }
+      main { padding: 44px 0 72px; }
+      .intro { max-width: 720px; margin-bottom: 28px; }
+      .eyebrow { margin: 0 0 9px; color: var(--muted); font-size: .84rem; font-weight: 600; }
+      h1 { max-width: 720px; margin: 0; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.1; letter-spacing: -.035em; }
+      .lede { max-width: 680px; margin: 16px 0 0; color: var(--muted); font-size: 1.06rem; }
 
       .demo {
         display: grid;
-        grid-template-columns: minmax(260px, .8fr) minmax(0, 1.5fr);
+        grid-template-columns: minmax(250px, .72fr) minmax(0, 1.45fr);
         border: 1px solid var(--line);
         background: var(--panel);
-        box-shadow: 0 24px 70px rgb(0 0 0 / .28);
+        border-radius: 9px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
       }
 
-      .story { padding: 28px; border-right: 1px solid var(--line); }
-      .story h2 { margin: 4px 0 12px; font-size: 1.55rem; line-height: 1.15; }
+      .story { padding: 24px; border-right: 1px solid var(--line); }
+      .story h2 { margin: 4px 0 10px; font-size: 1.32rem; line-height: 1.25; }
       .story p { color: var(--muted); }
-      .scenario-list { display: grid; gap: 10px; margin-top: 28px; }
+      .scenario-list { display: grid; gap: 8px; margin-top: 24px; }
       .scenario {
         width: 100%;
-        padding: 14px 16px;
+        padding: 12px 13px;
         border: 1px solid var(--line);
-        background: transparent;
+        border-radius: 6px;
+        background: var(--surface);
         text-align: left;
         cursor: pointer;
       }
-      .scenario:hover, .scenario:focus-visible, .scenario[aria-pressed="true"] { border-color: var(--cyan); background: rgb(71 230 209 / .07); outline: none; }
+      .scenario:hover { border-color: var(--border-strong); }
+      .scenario:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .scenario[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
       .scenario strong { display: block; }
       .scenario span { color: var(--muted); font-size: .875rem; }
 
-      .evidence { min-width: 0; padding: 28px; }
-      .evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+      .evidence { min-width: 0; padding: 24px; }
+      .evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
       .evidence-head h2 { margin: 0; font-size: 1rem; }
-      .badge { padding: 5px 9px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 .75rem/1.2 "SFMono-Regular", Consolas, monospace; }
-      pre { min-height: 380px; margin: 0; padding: 22px; overflow: auto; border: 1px solid var(--line); background: #06101c; color: #dceaf5; font-size: .88rem; line-height: 1.65; tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .result { display: flex; gap: 12px; align-items: flex-start; margin-top: 18px; padding: 16px; border-left: 3px solid var(--cyan); background: var(--panel-2); }
+      .badge { padding: 4px 8px; border: 1px solid var(--success); border-radius: 999px; color: var(--success); font-size: .72rem; font-weight: 700; letter-spacing: .03em; }
+      pre { min-height: 350px; margin: 0; padding: 20px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--code-bg); color: var(--code-text); font-size: .86rem; line-height: 1.62; tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .result { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; padding: 14px 15px; border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: 5px; background: var(--surface-subtle); }
       .result strong { color: var(--cyan); }
       .result p { margin: 3px 0 0; color: var(--muted); }
 
-      .flow { display: grid; grid-template-columns: repeat(5, 1fr); margin: 28px 0 84px; border: 1px solid var(--line); border-top: 0; }
-      .flow-item { position: relative; padding: 18px; border-right: 1px solid var(--line); }
+      .flow { display: grid; grid-template-columns: repeat(5, 1fr); margin: 20px 0 72px; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+      .flow-item { position: relative; padding: 16px; border-right: 1px solid var(--line); }
       .flow-item:last-child { border-right: 0; }
-      .flow-item span { display: block; margin-bottom: 8px; color: var(--cyan); font: 700 .75rem/1.2 "SFMono-Regular", Consolas, monospace; }
-      .flow-item strong { display: block; font-size: .94rem; }
-      .flow-item small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.4; }
+      .flow-item span { display: block; margin-bottom: 7px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+      .flow-item strong { display: block; font-size: .9rem; }
+      .flow-item small { display: block; margin-top: 4px; color: var(--muted); font-size: .78rem; line-height: 1.4; }
 
-      .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .6fr); gap: 40px; align-items: end; margin-bottom: 28px; }
-      .section-head h2 { margin: 0; max-width: 720px; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1.03; letter-spacing: -.045em; }
+      .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .72fr); gap: 40px; align-items: end; margin-bottom: 22px; }
+      .section-head h2 { margin: 0; max-width: 680px; font-size: clamp(1.65rem, 3vw, 2.15rem); line-height: 1.15; letter-spacing: -.025em; }
       .section-head p { margin: 0; color: var(--muted); }
 
-      .proof-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, .7fr); border: 1px solid var(--line); background: var(--panel); }
-      .proof-main { min-width: 0; padding: 26px; border-right: 1px solid var(--line); }
+      .proof-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, .7fr); border: 1px solid var(--line); border-radius: 9px; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+      .proof-main { min-width: 0; padding: 22px; border-right: 1px solid var(--line); }
       .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-      .tab { padding: 9px 12px; border: 1px solid var(--line); background: transparent; cursor: pointer; font-size: .84rem; }
-      .tab:hover, .tab:focus-visible, .tab[aria-selected="true"] { border-color: var(--amber); color: var(--amber); outline: none; }
-      .proof-code { height: 510px; min-height: 0; }
-      .token-key { color: #83d9ff; }
-      .token-string { color: #b7efa2; }
-      .token-number { color: #ffd47f; }
-      .token-boolean { color: #ef9fff; }
-      .token-null { color: #ff9f9f; }
-      .proof-side { padding: 26px; }
+      .tab { padding: 7px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: .84rem; }
+      .tab:hover { color: var(--text); background: var(--surface-subtle); }
+      .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .tab[aria-selected="true"] { border-color: var(--border); color: var(--text); background: var(--surface-subtle); }
+      .proof-code { height: 500px; min-height: 0; }
+      .token-key { color: var(--token-key); }
+      .token-string { color: var(--token-string); }
+      .token-number { color: var(--token-number); }
+      .token-boolean { color: var(--token-boolean); }
+      .token-null { color: var(--token-null); }
+      .proof-side { padding: 22px; }
       .proof-side h3 { margin: 4px 0 8px; font-size: 1.2rem; }
       .proof-side > p { margin: 0 0 22px; color: var(--muted); }
       .metric { padding: 15px 0; border-top: 1px solid var(--line); }
       .metric span { display: block; margin-bottom: 5px; color: var(--muted); font-size: .8rem; }
       .metric code { display: block; overflow-wrap: anywhere; color: var(--text); font-size: .78rem; }
       .download-list { display: grid; gap: 10px; margin-top: 24px; }
-      .button-link { display: flex; justify-content: space-between; align-items: center; padding: 11px 13px; border: 1px solid var(--line); color: var(--text); text-decoration: none; cursor: pointer; background: transparent; text-align: left; }
-      .button-link:hover, .button-link:focus-visible { border-color: var(--cyan); color: var(--cyan); outline: none; }
+      .button-link { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); text-decoration: none; cursor: pointer; background: var(--surface); text-align: left; }
+      .button-link:hover { border-color: var(--border-strong); color: var(--accent); }
+      .button-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-      .verification { margin: 30px 0 84px; padding: 26px; border: 1px solid var(--line); background: #06101c; }
+      .verification { margin: 24px 0 72px; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
       .verification-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-      .verification h3 { margin: 0 0 6px; font-size: 1.35rem; }
+      .verification h3 { margin: 0 0 6px; font-size: 1.18rem; }
       .verification p { margin: 0; color: var(--muted); }
-      .check { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 .76rem/1.2 "SFMono-Regular", Consolas, monospace; }
-      .checks { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 24px; border: 1px solid var(--line); }
-      .check-item { padding: 16px; border-right: 1px solid var(--line); }
+      .check { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--success); border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: .75rem; font-weight: 700; }
+      .checks { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 20px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+      .check-item { padding: 14px; border-right: 1px solid var(--line); background: var(--surface-subtle); }
       .check-item:last-child { border-right: 0; }
       .check-item strong { display: block; font-size: .9rem; }
       .check-item span { color: var(--muted); font-size: .8rem; }
 
-      .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 28px; background: var(--line); border: 1px solid var(--line); }
-      .limit-card { padding: 26px; background: var(--panel); }
+      .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+      .limit-card { padding: 22px; background: var(--panel); }
+      .limit-card + .limit-card { border-left: 1px solid var(--line); }
       .limit-card h3 { margin: 0 0 14px; font-size: 1.25rem; }
       .limit-card ul { margin: 0; padding-left: 20px; color: var(--muted); }
       .limit-card li + li { margin-top: 8px; }
 
-      .run { margin: 84px 0 0; padding: 30px; border: 1px solid var(--amber); background: rgb(255 199 102 / .045); }
-      .run h2 { margin: 0 0 8px; font-size: 1.8rem; }
+      .run { margin: 72px 0 0; padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+      .run h2 { margin: 0 0 8px; font-size: 1.45rem; }
       .run p { margin: 0 0 20px; color: var(--muted); }
       .run pre { min-height: 0; }
       footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
 
       @media (max-width: 760px) {
-        header { align-items: flex-start; padding: 18px 0; }
-        .status { display: none; }
-        .header-links a:not(:last-child) { display: none; }
+        .shell { width: min(100% - 28px, 1080px); }
+        header { align-items: center; min-height: 58px; }
+        .header-links { gap: 10px; }
+        .header-links a { display: none; }
+        .theme-control > span { display: none; }
         main { padding-top: 36px; }
         .demo { grid-template-columns: 1fr; }
         .story { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -159,30 +254,39 @@
         .flow-item { border-right: 0; border-bottom: 1px solid var(--line); }
         .flow-item:last-child { border-bottom: 0; }
         .section-head, .proof-grid, .limits { grid-template-columns: 1fr; }
+        .section-head { gap: 14px; }
         .proof-main { border-right: 0; border-bottom: 1px solid var(--line); }
         .proof-code { height: 420px; }
         .checks { grid-template-columns: 1fr 1fr; }
         .check-item { border-bottom: 1px solid var(--line); }
         .check-item:nth-child(2) { border-right: 0; }
         .check-item:nth-last-child(-n + 2) { border-bottom: 0; }
+        .limit-card + .limit-card { border-left: 0; border-top: 1px solid var(--line); }
         footer { flex-direction: column; }
       }
     </style>
   </head>
   <body>
     <header class="shell">
-      <div class="brand"><span class="mark" aria-hidden="true">PA</span> ProofAuth</div>
+      <div class="brand">ProofAuth <span>Payment demo</span></div>
       <div class="header-links">
-        <div class="status quiet"><span class="dot" aria-hidden="true"></span> Offline proof walkthrough</div>
-        <a href="https://github.com/auser/proofauth">Source on GitHub ↗</a>
+        <a href="https://github.com/auser/proofauth/blob/main/README.md">Documentation</a>
+        <a href="https://github.com/auser/proofauth">GitHub</a>
+        <label class="theme-control" for="theme-select"><span>Theme</span>
+          <select id="theme-select">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
       </div>
     </header>
 
     <main class="shell">
       <section class="intro" aria-labelledby="page-title">
-        <p class="eyebrow">A payment approval, unpacked</p>
-        <h1 id="page-title">Priya wants to approve a payment.</h1>
-        <p class="lede">Follow the exact request her client sends and see why one scenario is allowed while two nearly identical requests are denied.</p>
+        <p class="eyebrow">Demo / Payment approval</p>
+        <h1 id="page-title">Offline authorization, step by step</h1>
+        <p class="lede">Priya wants to approve a payment. Follow the request from her client through policy evaluation, signing, transport, and offline verification.</p>
       </section>
 
       <section class="demo" aria-label="Interactive authorization example">
@@ -204,21 +308,21 @@
         </div>
       </section>
 
-      <div class="flow" aria-label="Proof creation and verification flow">
-        <div class="flow-item"><span>01 · INTENT</span><strong>Priya clicks Approve</strong><small>Her client creates the exact recipient-bound request above.</small></div>
-        <div class="flow-item"><span>02 · POLICY</span><strong>RBAC allows it</strong><small>The role, action, tenant, workflow, resource, and time all match.</small></div>
-        <div class="flow-item"><span>03 · SIGN</span><strong>Issuer + subject sign</strong><small>Acme vouches for the identity; Priya proves possession of her key.</small></div>
-        <div class="flow-item"><span>04 · SEND</span><strong>One hex file travels</strong><small>The signed JSON envelope is encoded as lowercase hexadecimal.</small></div>
-        <div class="flow-item"><span>05 · VERIFY</span><strong>Consumer checks offline</strong><small>A local registry and pinned root key establish issuer trust.</small></div>
-      </div>
+      <ol class="flow" aria-label="Proof creation and verification flow">
+        <li class="flow-item"><span>1. Request</span><strong>Priya clicks Approve</strong><small>Her client creates the recipient-bound request above.</small></li>
+        <li class="flow-item"><span>2. Policy</span><strong>RBAC allows it</strong><small>Role, action, tenant, workflow, resource, and time match.</small></li>
+        <li class="flow-item"><span>3. Signatures</span><strong>Issuer and subject sign</strong><small>Acme attests to the identity; Priya proves possession.</small></li>
+        <li class="flow-item"><span>4. Transport</span><strong>The hex bundle is sent</strong><small>The signed JSON envelope is encoded as lowercase hex.</small></li>
+        <li class="flow-item"><span>5. Verification</span><strong>The consumer checks offline</strong><small>A registry and pinned root establish issuer trust.</small></li>
+      </ol>
 
       <section aria-labelledby="proof-title">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Open the actual proof</p>
-            <h2 id="proof-title">The bundle is data, signatures, and trust material—not a hash.</h2>
+            <p class="eyebrow">Proof contents</p>
+            <h2 id="proof-title">Inspect the offline bundle</h2>
           </div>
-          <p>This page ships the deterministic bundle created by the Rust payment example. Inspect each layer, then download the exact JSON or its lowercase-hex transport form.</p>
+          <p>This is the deterministic bundle created by the Rust example. Inspect each layer or download the exact JSON and lowercase-hex transport form.</p>
         </div>
 
         <div class="proof-grid">
@@ -235,8 +339,8 @@
           </div>
 
           <aside class="proof-side" aria-label="Proof receipt">
-            <p class="eyebrow">Proof receipt</p>
-            <h3>What the consumer receives</h3>
+            <p class="eyebrow">Transport details</p>
+            <h3>Consumer inputs</h3>
             <p>The consumer receives only the hex bundle from Priya. The registry and root key are provisioned separately as trust material.</p>
             <div class="metric"><span>Canonical bundle</span><code id="bundle-size">Loading…</code></div>
             <div class="metric"><span>Content hash</span><code id="content-hash">Loading…</code></div>
@@ -253,7 +357,7 @@
         <div class="verification">
           <div class="verification-head">
             <div><h3>The Rust verifier returns <code>valid</code></h3><p>The browser explains the proof but does not pretend to perform Ed25519 verification. The checked-in Rust implementation performs these checks.</p></div>
-            <span class="check">CLI VERIFIED</span>
+            <span class="check">Verified by CLI</span>
           </div>
           <div class="checks">
             <div class="check-item"><strong>Issuer trusted</strong><span>Registry signature + pinned root</span></div>
@@ -266,7 +370,7 @@
 
       <section aria-labelledby="boundary-title">
         <div class="section-head">
-          <div><p class="eyebrow">The security boundary</p><h2 id="boundary-title">What this evidence proves—and what it cannot.</h2></div>
+          <div><p class="eyebrow">Security boundary</p><h2 id="boundary-title">Properties and limitations</h2></div>
           <p>ProofAuth proves a cryptographic authorization statement relative to trusted inputs. It does not turn an issuer's claim into an external fact.</p>
         </div>
         <div class="limits">
@@ -292,8 +396,8 @@
       </section>
 
       <section class="run" aria-labelledby="run-title">
-        <p class="eyebrow">Run the same story locally</p>
-        <h2 id="run-title">The webpage and CLI use the same deterministic proof.</h2>
+        <p class="eyebrow">Local reproduction</p>
+        <h2 id="run-title">Run the same proof with the CLI</h2>
         <p>Clone the repository, create the payment bundle, then verify it with the signed registry and pinned root key.</p>
         <pre><code>just payment-demo
 just examples
@@ -393,7 +497,7 @@ valid</code></pre>
         badge.style.borderColor = denied ? "var(--red)" : "var(--cyan)";
         badge.style.color = denied ? "var(--red)" : "var(--cyan)";
         const result = document.querySelector("#result");
-        result.style.borderColor = denied ? "var(--red)" : "var(--cyan)";
+        result.style.borderLeftColor = denied ? "var(--red)" : "var(--cyan)";
         result.innerHTML = `<div><strong style="color: ${denied ? "var(--red)" : "var(--cyan)"}">${scenario.label}</strong><p>${scenario.reason}</p></div>`;
       }
 
@@ -464,6 +568,24 @@ valid</code></pre>
         link.click();
         URL.revokeObjectURL(url);
       }
+
+      const themeSelect = document.querySelector("#theme-select");
+      try {
+        const savedTheme = localStorage.getItem("proofauth-theme");
+        themeSelect.value = savedTheme === "light" || savedTheme === "dark" ? savedTheme : "system";
+      } catch (_) {
+        themeSelect.value = "system";
+      }
+
+      themeSelect.addEventListener("change", () => {
+        const theme = themeSelect.value;
+        if (theme === "system") delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = theme;
+        try {
+          if (theme === "system") localStorage.removeItem("proofauth-theme");
+          else localStorage.setItem("proofauth-theme", theme);
+        } catch (_) {}
+      });
 
       document.querySelectorAll(".scenario").forEach((button) => button.addEventListener("click", () => renderScenario(button.dataset.scenario)));
       document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => renderProofView(button.dataset.view)));
