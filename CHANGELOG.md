@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No changes yet.
+
+## v1.0.0 - 2026-09-22
+
 - Bound identity commitments and presentations to official UOR identity and
   normalized-policy digest bytes.
 - Added fail-closed lowercase bundle decoding, full-claims local RBAC
@@ -15,8 +19,6 @@
 - Added identity and policy schema validation before authorization evaluation.
 - Added the v1.0 release contract, UOR JSON reference vector, CLI examples,
   and CI configuration.
-
-## v1.0.0
-
-This section will be finalized when the v1.0.0 tag is created. The release
-must satisfy every item in `RELEASE.md`.
+- Added `generate-example` starter identity, policy, and request documents.
+- Added a narrative payment authorization demonstration and documented the
+  complete producer-to-consumer offline bundle flow.
