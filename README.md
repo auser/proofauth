@@ -105,9 +105,10 @@ just payment-demo
 # equivalent: cargo run --example payment_workflow
 ```
 
-The program narrates each step and prints the exact serialized
-`AuthorizationRequest` delivered to the `payment-api` consumer. For example,
-the first decision includes:
+The program narrates each step and prints formatted, syntax-colored JSON for
+the exact `AuthorizationRequest` delivered to the `payment-api` consumer.
+Colors are enabled on an interactive terminal and disabled when output is
+redirected or `NO_COLOR` is set. For example, the first decision includes:
 
 ```text
 === Acme payment desk ===
@@ -116,25 +117,35 @@ The policy lets approvers inherit payment viewing permission.
 
 1. Priya opens payment-8472 before deciding whether to approve it.
    Payload delivered to consumer `payment-api`:
-   {"recipient":"payment-api","tenant":"acme","workflow":"ap-2026","resource":"payment-8472","action":"payment.view","nonce":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],"issued_at":1000,"expires_at":1100}
+   {
+     "recipient": "payment-api",
+     "tenant": "acme",
+     "workflow": "ap-2026",
+     "resource": "payment-8472",
+     "action": "payment.view",
+     "nonce": [9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+     "issued_at": 1000,
+     "expires_at": 1100
+   }
    Decision: ALLOW through inherited role finance.viewer.
 ```
 
 It continues with the approve, out-of-scope, and suspended-user cases, printing
-the real request payload and decision for each one. These are the application
-requests evaluated by ProofAuth. The separate payload transported to an
-offline verifier is the signed `offline-bundle.hex` token demonstrated by
-`just demo`.
+the real request payload and decision for each one. It then signs the allowed
+approval using the existing ProofAuth commitment and presentation APIs, seals
+an `OfflineBundle`, verifies that it decodes, and prints the complete lowercase
+hex token sent to the offline consumer. That consumer must separately possess a
+trusted registry and independently pinned registry-root public key.
 
 The action names are application-defined strings, not built-in ProofAuth
 permissions. Your application chooses names such as `payment.view` and
 `payment.approve`; ProofAuth checks them against `PermissionRule.permission`
 along with the tenant, workflow, resource, identity lifetime, and role graph.
 
-This example demonstrates the local RBAC decision. A real producer then calls
-`issue` to sign an allowed decision and packages it into an offline bundle.
-The consumer verifies that bundle using its pinned registry-root key and local
-trust material. The complete signed creator/consumer flow appears below.
+The first four steps isolate the local RBAC decision. The fifth performs the
+producer-side signing and bundling. The complete creator/consumer flow below
+then verifies this kind of bundle using a signed registry, pinned registry-root
+key, and local trust material.
 
 ## Generate starter JSON
 

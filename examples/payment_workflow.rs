@@ -3,10 +3,37 @@
 //! Run with:
 //!   cargo run --example payment_workflow
 
+use ed25519_dalek::SigningKey;
 use proofauth::{
-    authorize, AuthorizationRequest, Effect, Error, IdentityClaims, PermissionRule, Policy, Role,
+    authorize, decode_offline_bundle, encode_offline_bundle, identity_root,
+    issue_identity_commitment, issue_presentation, AuthorizationRequest, Effect, Error,
+    IdentityClaims, OfflineBundle, PermissionRule, Policy, RevocationSnapshot, Role,
 };
-use std::{collections::BTreeMap, io};
+use std::{
+    collections::BTreeMap,
+    env,
+    io::{self, IsTerminal},
+};
+
+struct OutputStyle {
+    color: bool,
+}
+
+impl OutputStyle {
+    fn detect() -> Self {
+        Self {
+            color: io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none(),
+        }
+    }
+
+    fn paint(&self, code: &str, text: &str) -> String {
+        if self.color {
+            format!("\x1b[{code}m{text}\x1b[0m")
+        } else {
+            text.to_owned()
+        }
+    }
+}
 
 fn payment_request(action: &str, resource: &str) -> AuthorizationRequest {
     AuthorizationRequest {
@@ -34,13 +61,109 @@ fn expect_denied(
     }
 }
 
-fn print_payload(request: &AuthorizationRequest) -> Result<(), serde_json::Error> {
-    println!("   Payload delivered to consumer `{}`:", request.recipient);
-    println!("   {}", serde_json::to_string(request)?);
+fn formatted_request(request: &AuthorizationRequest) -> Result<String, serde_json::Error> {
+    Ok(format!(
+        concat!(
+            "{{\n",
+            "  \"recipient\": {},\n",
+            "  \"tenant\": {},\n",
+            "  \"workflow\": {},\n",
+            "  \"resource\": {},\n",
+            "  \"action\": {},\n",
+            "  \"nonce\": {},\n",
+            "  \"issued_at\": {},\n",
+            "  \"expires_at\": {}\n",
+            "}}"
+        ),
+        serde_json::to_string(&request.recipient)?,
+        serde_json::to_string(&request.tenant)?,
+        serde_json::to_string(&request.workflow)?,
+        serde_json::to_string(&request.resource)?,
+        serde_json::to_string(&request.action)?,
+        serde_json::to_string(&request.nonce)?,
+        request.issued_at,
+        request.expires_at,
+    ))
+}
+
+fn colorize_json(json: &str, style: &OutputStyle) -> String {
+    if !style.color {
+        return json.to_owned();
+    }
+
+    let bytes = json.as_bytes();
+    let mut output = String::with_capacity(json.len() * 2);
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'"' {
+            let start = index;
+            index += 1;
+            let mut escaped = false;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                index += 1;
+                if !escaped && byte == b'"' {
+                    break;
+                }
+                escaped = !escaped && byte == b'\\';
+            }
+            let mut next = index;
+            while next < bytes.len() && bytes[next].is_ascii_whitespace() {
+                next += 1;
+            }
+            let code = if next < bytes.len() && bytes[next] == b':' {
+                "1;36"
+            } else {
+                "32"
+            };
+            output.push_str(&style.paint(code, &json[start..index]));
+        } else if bytes[index].is_ascii_digit() || bytes[index] == b'-' {
+            let start = index;
+            index += 1;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_digit()
+                    || matches!(bytes[index], b'.' | b'e' | b'E' | b'+' | b'-'))
+            {
+                index += 1;
+            }
+            output.push_str(&style.paint("33", &json[start..index]));
+        } else if json[index..].starts_with("true") {
+            output.push_str(&style.paint("35", "true"));
+            index += 4;
+        } else if json[index..].starts_with("false") {
+            output.push_str(&style.paint("35", "false"));
+            index += 5;
+        } else if json[index..].starts_with("null") {
+            output.push_str(&style.paint("35", "null"));
+            index += 4;
+        } else {
+            let character = bytes[index] as char;
+            if matches!(character, '{' | '}' | '[' | ']' | ':' | ',') {
+                output.push_str(&style.paint("90", &character.to_string()));
+            } else {
+                output.push(character);
+            }
+            index += 1;
+        }
+    }
+    output
+}
+
+fn print_payload(
+    request: &AuthorizationRequest,
+    style: &OutputStyle,
+) -> Result<(), serde_json::Error> {
+    let label = format!("Payload delivered to consumer `{}`:", request.recipient);
+    println!("   {}", style.paint("1;35", &label));
+    for line in colorize_json(&formatted_request(request)?, style).lines() {
+        println!("   {line}");
+    }
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let style = OutputStyle::detect();
+
     // Acme's identity issuer says Priya is a finance approver. The policy below
     // makes that role inherit the less-privileged finance.viewer role.
     let priya = IdentityClaims {
@@ -99,47 +222,151 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
     };
 
-    println!("=== Acme payment desk ===");
+    println!("{}", style.paint("1;36", "=== Acme payment desk ==="));
     println!("Acme's issuer identifies Priya as a finance.approver for tenant acme.");
     println!("The policy lets approvers inherit payment viewing permission.");
     println!();
 
     let view = payment_request("payment.view", "payment-8472");
-    println!("1. Priya opens payment-8472 before deciding whether to approve it.");
-    print_payload(&view)?;
-    let view_decision = authorize(&priya, &view, &policy)?;
     println!(
-        "   Decision: ALLOW through inherited role {}.",
+        "{}",
+        style.paint(
+            "1;34",
+            "1. Priya opens payment-8472 before deciding whether to approve it."
+        )
+    );
+    print_payload(&view, &style)?;
+    let view_decision = authorize(&priya, &view, &policy)?;
+    let view_result = format!(
+        "Decision: ALLOW through inherited role {}.",
         view_decision.matched_roles.join(", ")
     );
+    println!("   {}", style.paint("1;32", &view_result));
     println!();
 
     let approve = payment_request("payment.approve", "payment-8472");
-    println!("2. Priya approves the payment she reviewed.");
-    print_payload(&approve)?;
-    let approve_decision = authorize(&priya, &approve, &policy)?;
     println!(
-        "   Decision: ALLOW through matched role {}.",
+        "{}",
+        style.paint("1;34", "2. Priya approves the payment she reviewed.")
+    );
+    print_payload(&approve, &style)?;
+    let approve_decision = authorize(&priya, &approve, &policy)?;
+    let approve_result = format!(
+        "Decision: ALLOW through matched role {}.",
         approve_decision.matched_roles.join(", ")
     );
+    println!("   {}", style.paint("1;32", &approve_result));
     println!();
 
     let other_payment = payment_request("payment.approve", "payment-9000");
-    println!("3. Priya tries to approve payment-9000, which is outside her policy scope.");
-    print_payload(&other_payment)?;
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "3. Priya tries to approve payment-9000, which is outside her policy scope."
+        )
+    );
+    print_payload(&other_payment, &style)?;
     expect_denied(&priya, &other_payment, &policy)?;
-    println!("   Decision: DENY because the resource is outside policy scope.");
+    println!(
+        "   {}",
+        style.paint(
+            "1;31",
+            "Decision: DENY because the resource is outside policy scope."
+        )
+    );
     println!();
 
     let mut suspended_priya = priya.clone();
     suspended_priya.roles.push("finance.suspended".into());
-    println!("4. Acme suspends Priya but her identity still contains the approver role.");
-    print_payload(&approve)?;
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "4. Acme suspends Priya but her identity still contains the approver role."
+        )
+    );
+    print_payload(&approve, &style)?;
     expect_denied(&suspended_priya, &approve, &policy)?;
-    println!("   Decision: DENY because the suspension deny overrides the allow.");
+    println!(
+        "   {}",
+        style.paint(
+            "1;31",
+            "Decision: DENY because the suspension deny overrides the allow."
+        )
+    );
+    println!();
+
+    let issuer = SigningKey::from_bytes(&[1; 32]);
+    let subject = SigningKey::from_bytes(&[2; 32]);
+    let commitment = issue_identity_commitment(
+        "authority".into(),
+        "issuer-key-1".into(),
+        &priya,
+        &policy,
+        7,
+        &issuer,
+        &subject.verifying_key(),
+    )?;
+    let presentation = issue_presentation(
+        identity_root(&priya),
+        &approve,
+        &approve_decision,
+        7,
+        &issuer,
+        priya.key_id.clone(),
+        &subject,
+    )?;
+    let snapshot = RevocationSnapshot {
+        issuer: "authority".into(),
+        epoch: 7,
+        issued_at: 900,
+        expires_at: 1_200,
+        revoked_key_ids: vec![],
+        signature: vec![],
+    }
+    .sign(&issuer);
+    let bundle = OfflineBundle {
+        identity_claims: Some(priya),
+        identity_commitment: commitment,
+        policy,
+        request: approve,
+        presentation,
+        revocation_snapshot: snapshot,
+        issuer_public_key: issuer.verifying_key().to_bytes().to_vec(),
+        subject_public_key: subject.verifying_key().to_bytes().to_vec(),
+        content_hash: [0; 32],
+    }
+    .seal();
+    let encoded_bundle = encode_offline_bundle(&bundle)?;
+    decode_offline_bundle(&encoded_bundle)?;
+
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "5. The producer signs the approved request and sends one offline bundle."
+        )
+    );
+    println!(
+        "   {}",
+        style.paint(
+            "1;35",
+            &format!(
+                "Complete lowercase-hex payload ({} characters):",
+                encoded_bundle.len()
+            )
+        )
+    );
+    println!("   {}", style.paint("33", &encoded_bundle));
     println!();
     println!("Each payload above is the exact AuthorizationRequest evaluated by ProofAuth.");
-    println!("Run `just demo` to see the signed .hex bundle delivered for offline verification.");
+    println!(
+        "The final hex token is the complete signed payload delivered for offline verification."
+    );
+    println!(
+        "The consumer also needs a trusted registry and independently pinned root public key."
+    );
 
     Ok(())
 }

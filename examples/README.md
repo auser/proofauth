@@ -12,14 +12,17 @@ Priya has the `finance.approver` role, which inherits `finance.viewer`. The
 example shows an inherited `payment.view` permission, a direct
 `payment.approve` permission, a resource-scoped denial, and an explicit
 suspension deny that overrides the allow. It demonstrates local RBAC evaluation
-without signatures so the identity, policy, request, and decision are easy to
-follow. Its terminal output narrates every attempt and prints the exact JSON
-`AuthorizationRequest` delivered to the `payment-api` consumer.
+first so the identity, policy, request, and decision are easy to follow. Its
+terminal output narrates every attempt and prints formatted, syntax-colored
+JSON for the exact `AuthorizationRequest` delivered to the `payment-api`
+consumer. It finishes by signing the allowed request and printing the complete
+lowercase-hex offline bundle.
 
 The permission names are chosen by the application. ProofAuth matches those
 strings and enforces the policy's tenant, workflow, resource, and role scopes.
-The complete creator/consumer example below demonstrates the different
-lowercase-hex bundle payload transported for offline verification.
+Set `NO_COLOR=1` or redirect output to disable ANSI colors. The complete
+creator/consumer example below verifies the same kind of bundle using a trusted
+registry and pinned root public key.
 
 ## Creator and consumer flow
 
