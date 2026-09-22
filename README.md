@@ -361,6 +361,59 @@ just bundle-verify
 - v1.0 provides signed minimal disclosure, not zero-knowledge selective
   disclosure. It cannot prove predicates over claims that remain undisclosed.
 
+## Independent security review plan
+
+The reviewer must be independent of the protocol's design and implementation
+and should have relevant Rust, application-security, and cryptographic-protocol
+experience. Dependency scanning and internal review are preparation for this
+gate; they do not replace it.
+
+Prepare an exact review candidate:
+
+- [ ] push every intended candidate change and require clean CI on that commit;
+- [ ] record the full commit SHA and its successful CI run URL;
+- [ ] run the local release gate, dependency audit, and archive verification:
+
+  ```sh
+  git rev-parse HEAD
+  export REGISTRY_ROOT_PUBLIC=ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1
+  just release-check
+  just audit
+  just archive
+  sha256sum -c dist/proofauth-v1.0-candidate.SHA256SUMS.txt
+  ```
+
+- [ ] give the reviewer the candidate archive and checksum, `README.md`,
+  `DESIGN.md`, `RELEASE.md`, public API and wire-format documentation,
+  canonicalization vectors, and test suite.
+
+The review scope must include:
+
+- [ ] trust boundaries for the issuer, subject, registry root, registry
+  distribution, and offline consumer;
+- [ ] domain separation, canonicalization, UOR addressing, signature coverage,
+  identity/key binding, request binding, and bundle integrity;
+- [ ] hierarchical RBAC, tenant/workflow/resource scoping, role disclosure, and
+  deny-overrides-allow behavior;
+- [ ] expiry, issuer epochs, key rotation, revocation freshness, replay
+  handling, and recipient binding;
+- [ ] malformed or adversarial JSON and hex input, resealed bundle tampering,
+  public-key validation, and fail-closed error paths; and
+- [ ] private-key handling, CLI secret exposure, metadata leakage, algorithm
+  assumptions, and every documented v1.0 limitation.
+
+Resolve and close the review:
+
+- [ ] record each finding, severity, affected commit, and proposed resolution;
+- [ ] fix each finding with a regression test, or explicitly document and
+  justify an accepted residual risk;
+- [ ] have the independent reviewer verify the resolutions and approve the
+  final post-fix commit SHA;
+- [ ] publish a non-sensitive review summary identifying the reviewer, scope,
+  reviewed commits, dates, findings status, and remaining accepted risks; and
+- [ ] rerun `just release-check`, `just audit`, archive verification, and clean
+  CI on the final reviewed release commit before creating the tag.
+
 ## v1.0 checklist
 
 Implemented and exercised in this repository:
@@ -378,7 +431,8 @@ Before a v1.0 release:
 
 - [x] run `just release-check` in clean CI on the supported stable Rust
   toolchain ([CI run](https://github.com/auser/proofauth/actions/runs/35783212486));
-- [ ] complete an independent security review and resolve its findings; and
+- [ ] complete the [independent security review plan](#independent-security-review-plan)
+  and resolve its findings; and
 - [ ] create the `v1.0.0` release tag only after every release-contract item is
   satisfied.
 
