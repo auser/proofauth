@@ -46,6 +46,12 @@ enum Command {
     PolicyAddress { input: String },
     /// Validate an authorization request without issuing or verifying it.
     ValidateRequest { input: String },
+    /// Evaluate an authorization request against identity claims and policy.
+    Authorize {
+        identity: String,
+        policy: String,
+        request: String,
+    },
     /// Issue a recipient-bound presentation from identity, policy, and request JSON.
     Issue {
         identity: String,
@@ -94,6 +100,12 @@ enum Command {
         input: String,
         #[arg(long)]
         root_public: String,
+    },
+    /// Sign an issuer registry document with a registry-root key.
+    RegistrySign {
+        input: String,
+        #[arg(long)]
+        root_secret: String,
     },
 }
 
@@ -268,6 +280,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             request.validate()?;
             println!("valid");
         }
+        Command::Authorize {
+            identity,
+            policy,
+            request,
+        } => {
+            let identity: IdentityClaims = serde_json::from_str(&read_input(identity)?)?;
+            let policy: Policy = serde_json::from_str(&read_input(policy)?)?;
+            let request: AuthorizationRequest = serde_json::from_str(&read_input(request)?)?;
+            authorize(&identity, &request, &policy)?;
+            println!("allowed");
+        }
         Command::Issue {
             identity,
             policy,
@@ -344,6 +367,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let signed: SignedTrustRegistry = serde_json::from_str(&read_input(input)?)?;
             signed.verify(&public(&root_public)?)?;
             println!("valid");
+        }
+        Command::RegistrySign { input, root_secret } => {
+            let registry: SignedTrustRegistry = serde_json::from_str(&read_input(input)?)?;
+            let root = secret(&root_secret)?;
+            let signed = registry.sign(&root);
+            signed.verify(&root.verifying_key())?;
+            println!("{}", serde_json::to_string_pretty(&signed)?);
         }
     }
     Ok(())

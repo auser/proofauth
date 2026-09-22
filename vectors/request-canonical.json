@@ -1,0 +1,1 @@
+{"action":"invoice.approve","expires_at":1100,"issued_at":1000,"nonce":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],"recipient":"payment-control","resource":"invoice-8472","tenant":"acme","workflow":"ap-2026"}

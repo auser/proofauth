@@ -1,8 +1,8 @@
-//! Consumer-side offline verification. This process receives no identity claims.
+//! Consumer-side offline verification using one token and local trust material.
 
 use ed25519_dalek::SigningKey;
-use proofauth::{decode_offline_bundle, ReplayCache, SignedTrustRegistry};
-use std::{fs, path::PathBuf};
+use proofauth::{authorize, decode_offline_bundle, Error, ReplayCache, SignedTrustRegistry};
+use std::{fs, io, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = PathBuf::from("target/proofauth-demo");
@@ -22,6 +22,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bundle.presentation.tenant,
         bundle.presentation.subject_key_id
     );
-    println!("the consumer validated one hex token offline without receiving the identity claims");
+    let identity = bundle
+        .identity_claims
+        .as_ref()
+        .ok_or_else(|| io::Error::other("demo bundle must disclose identity claims"))?;
+    let mut denied_request = bundle.request.clone();
+    denied_request.resource = "invoice-0000".into();
+    match authorize(identity, &denied_request, &bundle.policy) {
+        Err(Error::AuthorizationDenied) => println!(
+            "denied: resource={} reason=authorization denied",
+            denied_request.resource
+        ),
+        result => {
+            return Err(io::Error::other(format!("expected denied request, got {result:?}")).into())
+        }
+    }
+    println!("verified offline from one hex token plus locally trusted registry material");
     Ok(())
 }

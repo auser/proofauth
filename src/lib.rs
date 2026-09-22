@@ -106,13 +106,13 @@ pub struct IdentityClaims {
     pub issuer_epoch: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Role {
     pub name: String,
     pub parents: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PermissionRule {
     pub permission: String,
     pub effect: Effect,
@@ -121,7 +121,7 @@ pub struct PermissionRule {
     pub resources: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Effect {
     Allow,
     Deny,
@@ -179,7 +179,7 @@ impl Policy {
     }
 
     pub fn address(&self) -> Result<String, String> {
-        let json = serde_json::to_vec(self).map_err(|e| e.to_string())?;
+        let json = serde_json::to_vec(&normalized_policy(self)).map_err(|e| e.to_string())?;
         let outcome = uor_addr::json::address(&json).map_err(|e| format!("{e:?}"))?;
         Ok(outcome.address.to_string())
     }
@@ -240,6 +240,45 @@ pub fn uor_policy_address(policy: &Policy) -> Result<String, String> {
     policy.address()
 }
 
+/// Normalize policy collections whose order does not affect RBAC evaluation.
+pub fn normalized_policy(policy: &Policy) -> Policy {
+    let mut normalized = policy.clone();
+    for role in &mut normalized.roles {
+        role.parents.sort();
+        role.parents.dedup();
+    }
+    normalized.roles.sort();
+    for rules in normalized.rules.values_mut() {
+        for rule in rules.iter_mut() {
+            rule.tenants.sort();
+            rule.tenants.dedup();
+            rule.workflows.sort();
+            rule.workflows.dedup();
+            rule.resources.sort();
+            rule.resources.dedup();
+        }
+        rules.sort();
+        rules.dedup();
+    }
+    normalized
+}
+
+fn uor_address_digest(address: &str) -> Result<Hash, Error> {
+    let encoded = address
+        .strip_prefix("sha256:")
+        .ok_or(Error::InvalidField("UOR address"))?;
+    let mut digest = [0_u8; 32];
+    hex::decode_to_slice(encoded, &mut digest).map_err(|_| Error::InvalidField("UOR address"))?;
+    Ok(digest)
+}
+
+fn policy_root(policy: &Policy) -> Result<Hash, Error> {
+    let address = policy
+        .address()
+        .map_err(|_| Error::InvalidField("policy address"))?;
+    uor_address_digest(&address)
+}
+
 fn rule_matches(rule: &PermissionRule, request: &AuthorizationRequest) -> bool {
     let matches = |values: &[String], value: &str| {
         values.is_empty() || values.iter().any(|v| v == value || v == "*")
@@ -260,6 +299,9 @@ pub fn authorize(
     identity.validate()?;
     policy.validate()?;
     request.validate()?;
+    policy
+        .address()
+        .map_err(|_| Error::InvalidField("policy address"))?;
     let decision = policy.evaluate(identity, request);
     if decision.allowed {
         Ok(decision)
@@ -323,8 +365,9 @@ impl IdentityCommitment {
         if self.issuer.is_empty() || self.issuer_key_id.is_empty() || self.key_id.is_empty() {
             return Err(Error::InvalidField("identity commitment"));
         }
-        if self.claims_hash != identity_root(claims)
+        if self.claims_hash != identity_root_checked(claims)?
             || self.key_id != claims.key_id
+            || self.issuer_epoch != claims.issuer_epoch
             || now > self.valid_until
             || self.subject_public_key != subject_key.to_bytes().as_slice()
         {
@@ -389,11 +432,14 @@ pub fn issue_identity_commitment(
     if issuer.is_empty() || issuer_key_id.is_empty() {
         return Err(Error::InvalidField("identity issuer"));
     }
+    if issuer_epoch != claims.issuer_epoch {
+        return Err(Error::IssuerEpochRejected);
+    }
     Ok(IdentityCommitment {
         issuer,
         issuer_key_id,
-        claims_hash: identity_root(claims),
-        policy_hash: hash(b"proofauth/policy/v1", policy),
+        claims_hash: identity_root_checked(claims)?,
+        policy_hash: policy_root(policy)?,
         key_id: claims.key_id.clone(),
         subject_public_key: subject_key.to_bytes().to_vec(),
         valid_until: claims.valid_until,
@@ -476,6 +522,14 @@ impl RevocationSnapshot {
         if self.issuer.is_empty() || self.expires_at <= self.issued_at {
             return Err(Error::InvalidField("revocation snapshot"));
         }
+        let mut revoked_key_ids = self.revoked_key_ids.clone();
+        revoked_key_ids.sort();
+        revoked_key_ids.dedup();
+        if revoked_key_ids.len() != self.revoked_key_ids.len()
+            || revoked_key_ids.iter().any(|key_id| key_id.is_empty())
+        {
+            return Err(Error::InvalidField("revocation key id"));
+        }
         if now < self.issued_at || now > self.expires_at {
             return Err(Error::RevocationSnapshotExpired);
         }
@@ -486,7 +540,7 @@ impl RevocationSnapshot {
             epoch: self.epoch,
             issued_at: self.issued_at,
             expires_at: self.expires_at,
-            revoked_key_ids: &self.revoked_key_ids,
+            revoked_key_ids: &revoked_key_ids,
         };
         issuer_key
             .verify(&hash(b"proofauth/revocation/v1", &unsigned), &signature)
@@ -514,7 +568,7 @@ pub struct OfflineVerifier {
     pub replay_cache: ReplayCache,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TrustedIssuerKey {
     pub issuer: String,
     pub key_id: String,
@@ -543,7 +597,7 @@ struct UnsignedTrustRegistry<'a> {
     version: &'a str,
     issuer: &'a str,
     epoch: u64,
-    keys: &'a Vec<TrustedIssuerKey>,
+    keys: &'a [TrustedIssuerKey],
 }
 
 impl SignedTrustRegistry {
@@ -567,20 +621,38 @@ impl SignedTrustRegistry {
         if self.version.is_empty() || self.issuer.is_empty() {
             return Err(Error::InvalidField("trust registry"));
         }
+        let mut keys = self.keys.clone();
+        keys.sort();
+        for (index, key) in keys.iter().enumerate() {
+            if key.issuer.is_empty()
+                || key.key_id.is_empty()
+                || key.valid_until <= key.valid_from
+                || key.public_key.len() != 32
+                || index > 0
+                    && keys[index - 1].issuer == key.issuer
+                    && keys[index - 1].key_id == key.key_id
+            {
+                return Err(Error::InvalidField("trust registry key"));
+            }
+            let bytes: [u8; 32] = key
+                .public_key
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::MalformedPublicKey)?;
+            VerifyingKey::from_bytes(&bytes).map_err(|_| Error::MalformedPublicKey)?;
+        }
         let signature =
             Signature::from_slice(&self.signature).map_err(|_| Error::InvalidSignature)?;
         let unsigned = UnsignedTrustRegistry {
             version: &self.version,
             issuer: &self.issuer,
             epoch: self.epoch,
-            keys: &self.keys,
+            keys: &keys,
         };
         root_key
             .verify(&hash(b"proofauth/trust-registry/v1", &unsigned), &signature)
             .map_err(|_| Error::InvalidSignature)?;
-        Ok(TrustRegistry {
-            keys: self.keys.clone(),
-        })
+        Ok(TrustRegistry { keys })
     }
 }
 
@@ -653,6 +725,18 @@ pub fn encode_offline_bundle(bundle: &OfflineBundle) -> Result<String, serde_jso
 }
 
 pub fn decode_offline_bundle(encoded: &str) -> Result<OfflineBundle, Box<dyn std::error::Error>> {
+    if encoded.is_empty()
+        || encoded.len() & 1 == 1
+        || encoded
+            .bytes()
+            .any(|byte| !byte.is_ascii_digit() && !(b'a'..=b'f').contains(&byte))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "offline bundle must be non-empty lowercase hexadecimal",
+        )
+        .into());
+    }
     let bytes = hex::decode(encoded)?;
     let bundle: OfflineBundle = serde_json::from_slice(&bytes)?;
     bundle
@@ -710,21 +794,18 @@ impl OfflineBundle {
             .map_err(|_| Error::MalformedPublicKey)?;
         let subject_key =
             VerifyingKey::from_bytes(&subject_bytes).map_err(|_| Error::MalformedPublicKey)?;
-        if let Some(claims) = &self.identity_claims {
-            self.identity_commitment
-                .verify(claims, &issuer_key, &subject_key, now)?;
-        }
         let mut verifier = OfflineVerifier {
             snapshot: self.revocation_snapshot.clone(),
             replay_cache: replay_cache.clone(),
         };
-        let decision = verifier.verify_authorization(
+        let decision = verifier.verify_authorization_internal(
             &self.presentation,
             &self.identity_commitment,
             &self.policy,
             &self.request,
             &issuer_key,
             &subject_key,
+            self.identity_claims.as_ref(),
             now,
         );
         *replay_cache = verifier.replay_cache;
@@ -741,7 +822,23 @@ impl OfflineVerifier {
         subject_key: &VerifyingKey,
         now: u64,
     ) -> Result<(), Error> {
+        presentation.verify(request, issuer_key, subject_key, now)?;
+        self.verify_status(presentation, None, issuer_key, now)?;
+        self.replay_cache
+            .check_and_record(presentation.authorization_id)
+    }
+
+    fn verify_status(
+        &self,
+        presentation: &AuthorizationPresentation,
+        issuer: Option<&str>,
+        issuer_key: &VerifyingKey,
+        now: u64,
+    ) -> Result<(), Error> {
         self.snapshot.verify(issuer_key, now)?;
+        if issuer.is_some_and(|expected| self.snapshot.issuer != expected) {
+            return Err(Error::UntrustedIssuer);
+        }
         if presentation.issuer_epoch > self.snapshot.epoch {
             return Err(Error::IssuerEpochRejected);
         }
@@ -753,9 +850,7 @@ impl OfflineVerifier {
         {
             return Err(Error::SubjectKeyRevoked);
         }
-        presentation.verify(request, issuer_key, subject_key, now)?;
-        self.replay_cache
-            .check_and_record(presentation.authorization_id)
+        Ok(())
     }
 
     /// Verify the complete offline identity and RBAC path.
@@ -774,38 +869,67 @@ impl OfflineVerifier {
         subject_key: &VerifyingKey,
         now: u64,
     ) -> Result<AuthorizationDecision, Error> {
+        self.verify_authorization_internal(
+            presentation,
+            credential,
+            policy,
+            request,
+            issuer_key,
+            subject_key,
+            None,
+            now,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn verify_authorization_internal(
+        &mut self,
+        presentation: &AuthorizationPresentation,
+        credential: &IdentityCommitment,
+        policy: &Policy,
+        request: &AuthorizationRequest,
+        issuer_key: &VerifyingKey,
+        subject_key: &VerifyingKey,
+        identity_claims: Option<&IdentityClaims>,
+        now: u64,
+    ) -> Result<AuthorizationDecision, Error> {
         policy.validate()?;
-        credential.verify_binding(issuer_key, subject_key, now)?;
+        request.validate()?;
+        if let Some(claims) = identity_claims {
+            credential.verify(claims, issuer_key, subject_key, now)?;
+        } else {
+            credential.verify_binding(issuer_key, subject_key, now)?;
+        }
+        let expected_policy_hash = policy_root(policy)?;
         if credential.claims_hash != presentation.identity_root
             || credential.key_id != presentation.subject_key_id
-            || credential.policy_hash != hash(b"proofauth/policy/v1", policy)
+            || credential.policy_hash != expected_policy_hash
+            || presentation.policy_hash != expected_policy_hash
         {
             return Err(Error::WrongRequest);
         }
-        self.verify(presentation, request, issuer_key, subject_key, now)?;
-        let identity = IdentityClaims {
-            subject_type: "credential-subject".into(),
+        if credential.issuer_epoch != presentation.issuer_epoch {
+            return Err(Error::IssuerEpochRejected);
+        }
+        presentation.verify(request, issuer_key, subject_key, now)?;
+        let identity = identity_claims.cloned().unwrap_or_else(|| IdentityClaims {
+            subject_type: "issuer-committed-subject".into(),
             tenant_ids: vec![presentation.tenant.clone()],
             roles: presentation.roles.clone(),
             attributes: serde_json::Value::Null,
             key_id: presentation.subject_key_id.clone(),
-            valid_until: presentation.expires_at,
-            issuer_epoch: presentation.issuer_epoch,
-        };
+            valid_until: credential.valid_until,
+            issuer_epoch: credential.issuer_epoch,
+        });
         let decision = authorize(&identity, request, policy)?;
-        let expected_policy_hash = hash(
-            b"proofauth/policy-address/v1",
-            &policy
-                .address()
-                .map_err(|_| Error::InvalidField("policy address"))?,
-        );
-        if !decision.allowed
-            || decision.policy_hash != policy.address().unwrap_or_default()
-            || presentation.policy_hash != expected_policy_hash
+        if decision.policy_hash != policy.address().unwrap_or_default()
             || decision.matched_roles != presentation.roles
         {
             return Err(Error::AuthorizationDenied);
         }
+        self.verify_status(presentation, Some(&credential.issuer), issuer_key, now)?;
+        self.replay_cache
+            .check_and_record(presentation.authorization_id)?;
         Ok(decision)
     }
 
@@ -852,6 +976,12 @@ impl AuthorizationRequest {
         if self.action.is_empty() {
             return Err(Error::InvalidField("action"));
         }
+        if self.workflow.as_deref() == Some("") {
+            return Err(Error::InvalidField("workflow"));
+        }
+        if self.nonce == [0; 32] {
+            return Err(Error::InvalidField("nonce"));
+        }
         if self.expires_at <= self.issued_at {
             return Err(Error::InvalidField("time interval"));
         }
@@ -889,10 +1019,24 @@ impl AuthorizationPresentation {
         if self.recipient != request.recipient {
             return Err(Error::WrongAudience);
         }
-        if self.request_hash != request.digest() {
+        if self.request_hash != request.digest()
+            || self.tenant != request.tenant
+            || self.workflow != request.workflow
+            || self.action != request.action
+            || self.resource != request.resource
+            || self.issued_at != request.issued_at
+            || self.expires_at != request.expires_at
+        {
             return Err(Error::WrongRequest);
         }
-        if self.action != request.action || self.resource != request.resource {
+        if self.subject_key_id.is_empty() || self.roles.iter().any(|role| role.is_empty()) {
+            return Err(Error::InvalidField("presentation disclosure"));
+        }
+        let expected_authorization_id = hash(
+            b"proofauth/authorization/v1",
+            &(self.request_hash, self.identity_root, self.issuer_epoch),
+        );
+        if self.authorization_id != expected_authorization_id {
             return Err(Error::WrongRequest);
         }
         if now < self.issued_at || now > self.expires_at || now > request.expires_at {
@@ -969,7 +1113,13 @@ impl<'a> From<&'a AuthorizationPresentation> for UnsignedPresentation<'a> {
 }
 
 pub fn identity_root(claims: &IdentityClaims) -> Hash {
-    hash(b"proofauth/identity/v1", &normalized_identity(claims))
+    identity_root_checked(claims).expect("identity claims must have a canonical UOR address")
+}
+
+fn identity_root_checked(claims: &IdentityClaims) -> Result<Hash, Error> {
+    let address =
+        uor_identity_address(claims).map_err(|_| Error::InvalidField("identity UOR address"))?;
+    uor_address_digest(&address)
 }
 
 /// Normalize fields whose meaning is set-like before content addressing.
@@ -1034,6 +1184,9 @@ pub fn issue_presentation(
     {
         return Err(Error::WrongRequest);
     }
+    if subject_key_id.is_empty() {
+        return Err(Error::InvalidField("subject key id"));
+    }
     let unsigned = AuthorizationPresentation {
         identity_root,
         request_hash: request.digest(),
@@ -1042,7 +1195,7 @@ pub fn issue_presentation(
         workflow: request.workflow.clone(),
         resource: request.resource.clone(),
         action: request.action.clone(),
-        policy_hash: hash(b"proofauth/policy-address/v1", &decision.policy_hash),
+        policy_hash: uor_address_digest(&decision.policy_hash)?,
         authorization_id: hash(
             b"proofauth/authorization/v1",
             &(request.digest(), identity_root, issuer_epoch),
@@ -1089,7 +1242,10 @@ mod tests {
             resource: request.resource.clone(),
             action: request.action.clone(),
             policy_hash: [2; 32],
-            authorization_id: [3; 32],
+            authorization_id: hash(
+                b"proofauth/authorization/v1",
+                &(request.digest(), [1; 32], 4_u64),
+            ),
             issued_at: 100,
             expires_at: 200,
             issuer_epoch: 4,
@@ -1144,7 +1300,10 @@ mod tests {
             resource: request.resource.clone(),
             action: request.action.clone(),
             policy_hash: [2; 32],
-            authorization_id: [3; 32],
+            authorization_id: hash(
+                b"proofauth/authorization/v1",
+                &(request.digest(), [1; 32], 1_u64),
+            ),
             issued_at: 1,
             expires_at: 10,
             issuer_epoch: 1,
@@ -1252,6 +1411,87 @@ mod tests {
             issued_at: 100,
             expires_at: 150,
         }
+    }
+
+    fn example_policy() -> Policy {
+        Policy {
+            version: "1".into(),
+            roles: vec![Role {
+                name: "finance.approver".into(),
+                parents: vec!["finance".into()],
+            }],
+            rules: std::collections::BTreeMap::from([(
+                "finance".into(),
+                vec![PermissionRule {
+                    permission: "invoice.approve".into(),
+                    effect: Effect::Allow,
+                    tenants: vec!["acme".into()],
+                    workflows: vec!["ap-2026".into()],
+                    resources: vec!["invoice-8472".into()],
+                }],
+            )]),
+        }
+    }
+
+    fn offline_fixture() -> (OfflineBundle, TrustRegistry, SigningKey, SigningKey) {
+        let issuer = SigningKey::from_bytes(&[1; 32]);
+        let subject = SigningKey::from_bytes(&[2; 32]);
+        let identity = example_identity();
+        let policy = example_policy();
+        let request = example_request();
+        let decision = authorize(&identity, &request, &policy).unwrap();
+        let identity_commitment = issue_identity_commitment(
+            "authority".into(),
+            "issuer-key-1".into(),
+            &identity,
+            &policy,
+            1,
+            &issuer,
+            &subject.verifying_key(),
+        )
+        .unwrap();
+        let presentation = issue_presentation(
+            identity_root(&identity),
+            &request,
+            &decision,
+            1,
+            &issuer,
+            identity.key_id.clone(),
+            &subject,
+        )
+        .unwrap();
+        let revocation_snapshot = RevocationSnapshot {
+            issuer: "authority".into(),
+            epoch: 1,
+            issued_at: 90,
+            expires_at: 200,
+            revoked_key_ids: vec![],
+            signature: vec![],
+        }
+        .sign(&issuer);
+        let bundle = OfflineBundle {
+            identity_claims: Some(identity),
+            identity_commitment,
+            policy,
+            request,
+            presentation,
+            revocation_snapshot,
+            issuer_public_key: issuer.verifying_key().to_bytes().to_vec(),
+            subject_public_key: subject.verifying_key().to_bytes().to_vec(),
+            content_hash: [0; 32],
+        }
+        .seal();
+        let registry = TrustRegistry {
+            keys: vec![TrustedIssuerKey {
+                issuer: "authority".into(),
+                key_id: "issuer-key-1".into(),
+                public_key: issuer.verifying_key().to_bytes().to_vec(),
+                valid_from: 1,
+                valid_until: 250,
+                revoked: false,
+            }],
+        };
+        (bundle, registry, issuer, subject)
     }
 
     #[test]
@@ -1523,7 +1763,10 @@ mod tests {
             resource: request.resource.clone(),
             action: request.action.clone(),
             policy_hash: [2; 32],
-            authorization_id: [5; 32],
+            authorization_id: hash(
+                b"proofauth/authorization/v1",
+                &(request.digest(), [1; 32], 2_u64),
+            ),
             issued_at: 1,
             expires_at: 10,
             issuer_epoch: 2,
@@ -1590,7 +1833,10 @@ mod tests {
             resource: request.resource.clone(),
             action: request.action.clone(),
             policy_hash: [2; 32],
-            authorization_id: [7; 32],
+            authorization_id: hash(
+                b"proofauth/authorization/v1",
+                &(request.digest(), [1; 32], 1_u64),
+            ),
             issued_at: 1,
             expires_at: 10,
             issuer_epoch: 1,
@@ -1677,6 +1923,262 @@ mod tests {
             document.verify(&other.verifying_key()),
             Err(Error::InvalidSignature)
         ));
+        let mut modified = document;
+        modified.keys[0].revoked = true;
+        assert!(modified.verify(&root.verifying_key()).is_err());
+    }
+
+    #[test]
+    fn policy_uor_address_is_stable_for_reordered_semantic_sets() {
+        let mut reordered = example_policy();
+        reordered.roles[0].parents = vec!["finance".into(), "base".into()];
+        reordered
+            .rules
+            .get_mut("finance")
+            .unwrap()
+            .push(PermissionRule {
+                permission: "invoice.read".into(),
+                effect: Effect::Allow,
+                tenants: vec![],
+                workflows: vec![],
+                resources: vec![],
+            });
+        let mut original = reordered.clone();
+        original.roles[0].parents.reverse();
+        original.rules.get_mut("finance").unwrap().reverse();
+        assert_eq!(original.address().unwrap(), reordered.address().unwrap());
+    }
+
+    #[test]
+    fn offline_bundle_hex_is_lowercase_and_rejects_malformed_encodings() {
+        let (bundle, _, _, _) = offline_fixture();
+        let encoded = encode_offline_bundle(&bundle).unwrap();
+        assert!(encoded
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+        assert!(decode_offline_bundle(&encoded).is_ok());
+        assert!(decode_offline_bundle("").is_err());
+        assert!(decode_offline_bundle("abc").is_err());
+        assert!(decode_offline_bundle("not-hex").is_err());
+        assert!(decode_offline_bundle(&encoded.to_ascii_uppercase()).is_err());
+    }
+
+    #[test]
+    fn cryptographic_verification_rejects_resealed_tampering() {
+        let (bundle, registry, _, _) = offline_fixture();
+        let attacker = SigningKey::from_bytes(&[9; 32]);
+        let mut cases = Vec::new();
+
+        let mut changed = bundle.clone();
+        changed
+            .identity_claims
+            .as_mut()
+            .unwrap()
+            .roles
+            .push("admin".into());
+        cases.push(("identity claims", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.request.resource = "invoice-0000".into();
+        cases.push(("request", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.presentation.roles.push("admin".into());
+        cases.push(("disclosed role", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.policy.rules.get_mut("finance").unwrap()[0].permission = "invoice.reject".into();
+        cases.push(("policy permission", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.issuer_public_key = attacker.verifying_key().to_bytes().to_vec();
+        cases.push(("issuer public key", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.subject_public_key = attacker.verifying_key().to_bytes().to_vec();
+        cases.push(("subject public key", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.identity_commitment.signature[0] ^= 1;
+        cases.push(("identity commitment signature", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.presentation.issuer_signature[0] ^= 1;
+        cases.push(("presentation signature", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.presentation.subject_signature[0] ^= 1;
+        cases.push(("proof of possession", changed.seal()));
+
+        let mut changed = bundle.clone();
+        changed.revocation_snapshot.signature[0] ^= 1;
+        cases.push(("revocation signature", changed.seal()));
+
+        for (name, changed) in cases {
+            assert!(
+                changed
+                    .verify(&registry, &mut ReplayCache::new(), 120)
+                    .is_err(),
+                "resealed {name} tampering was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn offline_bundle_enforces_trust_freshness_revocation_and_replay() {
+        let (bundle, registry, issuer, _) = offline_fixture();
+        assert!(bundle
+            .verify(&TrustRegistry::default(), &mut ReplayCache::new(), 120)
+            .is_err());
+
+        let mut stale = bundle.clone();
+        stale.revocation_snapshot.expires_at = 119;
+        stale.revocation_snapshot = stale.revocation_snapshot.sign(&issuer);
+        assert!(matches!(
+            stale.seal().verify(&registry, &mut ReplayCache::new(), 120),
+            Err(Error::RevocationSnapshotExpired)
+        ));
+
+        let mut malformed = bundle.clone();
+        malformed.revocation_snapshot.expires_at = malformed.revocation_snapshot.issued_at;
+        assert!(matches!(
+            malformed
+                .seal()
+                .verify(&registry, &mut ReplayCache::new(), 120),
+            Err(Error::InvalidField("revocation snapshot"))
+        ));
+
+        let mut wrong_issuer = bundle.clone();
+        wrong_issuer.revocation_snapshot.issuer = "other-authority".into();
+        wrong_issuer.revocation_snapshot = wrong_issuer.revocation_snapshot.sign(&issuer);
+        assert!(matches!(
+            wrong_issuer
+                .seal()
+                .verify(&registry, &mut ReplayCache::new(), 120),
+            Err(Error::UntrustedIssuer)
+        ));
+
+        let mut revoked = bundle.clone();
+        revoked.revocation_snapshot.revoked_key_ids = vec!["key-1".into()];
+        revoked.revocation_snapshot = revoked.revocation_snapshot.sign(&issuer);
+        assert!(matches!(
+            revoked
+                .seal()
+                .verify(&registry, &mut ReplayCache::new(), 120),
+            Err(Error::SubjectKeyRevoked)
+        ));
+
+        let mut expired = bundle.clone();
+        expired.identity_commitment.valid_until = 119;
+        expired.identity_commitment = expired.identity_commitment.sign(&issuer);
+        assert!(expired
+            .seal()
+            .verify(&registry, &mut ReplayCache::new(), 120)
+            .is_err());
+
+        let mut replay_cache = ReplayCache::new();
+        bundle.verify(&registry, &mut replay_cache, 120).unwrap();
+        assert!(matches!(
+            bundle.verify(&registry, &mut replay_cache, 120),
+            Err(Error::ReplayDetected)
+        ));
+    }
+
+    #[test]
+    fn disclosed_claims_drive_local_policy_evaluation() {
+        let issuer = SigningKey::from_bytes(&[1; 32]);
+        let subject = SigningKey::from_bytes(&[2; 32]);
+        let mut identity = example_identity();
+        identity.roles = vec!["employee".into()];
+        let request = example_request();
+        let policy = Policy {
+            version: "1".into(),
+            roles: vec![],
+            rules: std::collections::BTreeMap::from([(
+                "admin".into(),
+                vec![PermissionRule {
+                    permission: request.action.clone(),
+                    effect: Effect::Allow,
+                    tenants: vec![request.tenant.clone()],
+                    workflows: vec![request.workflow.clone().unwrap()],
+                    resources: vec![request.resource.clone()],
+                }],
+            )]),
+        };
+        let forged_decision = AuthorizationDecision {
+            allowed: true,
+            permission: request.action.clone(),
+            tenant: request.tenant.clone(),
+            workflow: request.workflow.clone(),
+            resource: request.resource.clone(),
+            policy_hash: policy.address().unwrap(),
+            matched_roles: vec!["admin".into()],
+        };
+        let identity_commitment = issue_identity_commitment(
+            "authority".into(),
+            "issuer-key-1".into(),
+            &identity,
+            &policy,
+            1,
+            &issuer,
+            &subject.verifying_key(),
+        )
+        .unwrap();
+        let presentation = issue_presentation(
+            identity_root(&identity),
+            &request,
+            &forged_decision,
+            1,
+            &issuer,
+            identity.key_id.clone(),
+            &subject,
+        )
+        .unwrap();
+        let snapshot = RevocationSnapshot {
+            issuer: "authority".into(),
+            epoch: 1,
+            issued_at: 90,
+            expires_at: 200,
+            revoked_key_ids: vec![],
+            signature: vec![],
+        }
+        .sign(&issuer);
+        let bundle = OfflineBundle {
+            identity_claims: Some(identity),
+            identity_commitment,
+            policy,
+            request,
+            presentation,
+            revocation_snapshot: snapshot,
+            issuer_public_key: issuer.verifying_key().to_bytes().to_vec(),
+            subject_public_key: subject.verifying_key().to_bytes().to_vec(),
+            content_hash: [0; 32],
+        }
+        .seal();
+        let registry = TrustRegistry {
+            keys: vec![TrustedIssuerKey {
+                issuer: "authority".into(),
+                key_id: "issuer-key-1".into(),
+                public_key: issuer.verifying_key().to_bytes().to_vec(),
+                valid_from: 1,
+                valid_until: 250,
+                revoked: false,
+            }],
+        };
+        assert!(matches!(
+            bundle.verify(&registry, &mut ReplayCache::new(), 120),
+            Err(Error::AuthorizationDenied)
+        ));
+    }
+
+    #[test]
+    fn selective_bundle_verifies_only_committed_identity_and_disclosed_roles() {
+        let (mut bundle, registry, _, _) = offline_fixture();
+        bundle.identity_claims = None;
+        bundle = bundle.seal();
+        assert!(bundle
+            .verify(&registry, &mut ReplayCache::new(), 120)
+            .is_ok());
     }
 
     #[test]
@@ -1694,6 +2196,12 @@ mod tests {
         assert!(matches!(
             request.validate(),
             Err(Error::InvalidField("recipient"))
+        ));
+        let mut request = example_request();
+        request.nonce = [0; 32];
+        assert!(matches!(
+            request.validate(),
+            Err(Error::InvalidField("nonce"))
         ));
     }
 
@@ -1731,5 +2239,51 @@ mod tests {
         assert_eq!(decoded.recipient, presentation.recipient);
         assert_eq!(decoded.authorization_id, presentation.authorization_id);
         assert_eq!(decoded.issuer_signature, presentation.issuer_signature);
+    }
+
+    #[test]
+    fn request_and_presentation_match_committed_canonical_vectors() {
+        let request_vector = include_bytes!("../vectors/request-canonical.json");
+        let request_vector = request_vector.strip_suffix(b"\n").unwrap_or(request_vector);
+        let request: AuthorizationRequest = serde_json::from_slice(request_vector).unwrap();
+        assert_eq!(canonical_bytes(&request), request_vector);
+        assert_eq!(
+            request_hash(&request),
+            "eb2b2774be9aa3e24e5722df7cc8188f2f648b9bd6ba7c1e23ad26493d2be500"
+        );
+
+        let identity = IdentityClaims {
+            subject_type: "human".into(),
+            tenant_ids: vec!["acme".into()],
+            roles: vec!["finance.approver".into()],
+            attributes: serde_json::json!({"clearance": "confidential"}),
+            key_id: "subject-key-1".into(),
+            valid_until: 1_200,
+            issuer_epoch: 7,
+        };
+        let policy = example_policy();
+        let decision = authorize(&identity, &request, &policy).unwrap();
+        let presentation = issue_presentation(
+            identity_root(&identity),
+            &request,
+            &decision,
+            7,
+            &SigningKey::from_bytes(&[1; 32]),
+            identity.key_id.clone(),
+            &SigningKey::from_bytes(&[2; 32]),
+        )
+        .unwrap();
+        let presentation_vector = include_bytes!("../vectors/presentation-canonical.json");
+        let presentation_vector = presentation_vector
+            .strip_suffix(b"\n")
+            .unwrap_or(presentation_vector);
+        assert_eq!(
+            encode_presentation(&presentation).unwrap(),
+            presentation_vector
+        );
+        assert_eq!(
+            presentation_hash(&presentation),
+            "9a5bf931116a19ab007334eb1a9374153580830046d30ce11fcd7dc4cfaf1be2"
+        );
     }
 }

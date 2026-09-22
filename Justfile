@@ -15,6 +15,9 @@ check:
 lint:
     cargo clippy --all-targets --all-features -- -D warnings
 
+audit:
+    cargo audit
+
 test:
     cargo test --all-features
 
@@ -53,8 +56,8 @@ ci: fmt-check check lint test doc-test
 archive:
     tar -czf proofauth-v1.0-candidate.tar.gz \
         --exclude='target' --exclude='.git' \
-        Cargo.toml Justfile README.md DESIGN.md RELEASE.md CHANGELOG.md \
-        src examples vectors .github
+        Cargo.toml Cargo.lock Justfile README.md DESIGN.md RELEASE.md CHANGELOG.md \
+        src tests examples demo-data specs vectors .github
     sha256sum proofauth-v1.0-candidate.tar.gz > proofauth-v1.0-candidate.SHA256SUMS.txt
 
 release-check: ci build examples bundle-verify

@@ -37,10 +37,9 @@ H(domain || canonical_object)
 Examples:
 
 ```text
-H("proofauth/identity/v1" || identity_claims)
-H("proofauth/policy/v1" || policy)
 H("proofauth/request/v1" || authorization_request)
 H("proofauth/presentation/v1" || presentation)
+H("proofauth/offline-bundle/v1" || bundle_contents)
 ```
 
 Digest values are encoded as canonical lowercase hexadecimal strings. A hex
@@ -51,17 +50,19 @@ the digest is its tamper-evident identifier.
 Canonical CBOR may be added as an alternate wire encoding later. It must not
 change the semantic object model or domain-separation rules.
 
-ProofAuth uses the official `uor-addr` JSON realization for identity content
-addresses. It emits the UOR κ-label format:
+ProofAuth uses the official `uor-addr` JSON realization for identity and policy
+content addresses. It emits the UOR κ-label format:
 
 ```text
 sha256:<64 lowercase hexadecimal characters>
 ```
 
-ProofAuth performs identity-schema normalization first, then delegates JSON
+ProofAuth performs schema normalization first, then delegates JSON
 canonicalization, Unicode NFC normalization, SHA-256 derivation, and label
-construction to `uor-addr`. The local versioned digest remains available for
-internal domain-separated protocol objects such as requests and presentations.
+construction to `uor-addr`. Identity roots and policy hashes in signed
+structures are the raw digest bytes from those addresses. Local versioned
+digests remain for protocol objects such as requests, presentations, registry
+documents, revocation snapshots, and bundles.
 
 Normalization is type-specific:
 
@@ -104,10 +105,10 @@ finance.admin
         └── invoice.approve
 ```
 
-Policies are versioned and independently hashed:
+Policies are versioned and independently addressed:
 
 ```text
-policy_hash = H("proofauth/policy/v1" || canonical_policy)
+policy_address = uor_addr(normalized_policy)
 ```
 
 Policy evaluation must define:
@@ -295,16 +296,11 @@ The authorization issuer:
 7. signs the presentation;
 8. binds it to the subject or delegated agent key.
 
-The payment control:
-
-1. verifies the issuer signature;
-2. verifies the recipient and request hash;
-3. verifies tenant, workflow, resource, and action;
-4. checks expiry and issuer epoch;
-5. checks its signed revocation snapshot;
-6. verifies proof of possession;
-7. checks its local replay cache;
-8. records the decision and either permits or denies the action.
+The payment control decodes canonical lowercase hex, checks the bundle content
+hash, verifies the pinned-root registry and issuer membership, verifies the
+identity commitment and subject proof, recomputes the UOR policy address and
+local RBAC decision, compares it with the signed decision, then checks time,
+epoch, revocation freshness, and replay before permitting the action.
 
 ## Rust API target
 
@@ -332,6 +328,13 @@ proofauth hash --domain <name> <json-or-@file>
 proofauth identity-address <json-or-@file>
 proofauth policy-address <json-or-@file>
 proofauth validate-request <json-or-@file>
+proofauth authorize <identity> <policy> <request>
+proofauth issue <identity> <policy> <request> [key options]
+proofauth verify <presentation> <request> <snapshot> [key/time options]
+proofauth bundle-seal <json-or-@file>
+proofauth bundle-verify <hex> <registry> [root/time options]
+proofauth registry-sign <registry> --root-secret <hex>
+proofauth registry-verify <registry> --root-public <hex>
 ```
 
 All address commands emit the UOR `sha256:<64 lowercase hex>` κ-label. The

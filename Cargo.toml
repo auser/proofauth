@@ -15,7 +15,7 @@ serde_jcs = "0.1"
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "1"
-uor-addr = { git = "https://github.com/uoR-Foundation/uor-addr.git", package = "uor-addr" }
+uor-addr = { git = "https://github.com/uoR-Foundation/uor-addr.git", package = "uor-addr", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 hex = "0.4"

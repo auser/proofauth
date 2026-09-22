@@ -3,15 +3,16 @@
 This is the smallest complete ProofAuth flow.
 
 The creator has the identity, policy, and signing keys. It evaluates the
-request, creates a recipient-bound presentation, signs it, and writes only
-the transport artifacts under `target/proofauth-demo/`. It also creates an
+request, creates a recipient-bound presentation, signs it, and writes the
+transport artifacts under `target/proofauth-demo/`. It also creates an
 issuer-signed identity commitment binding the canonical identity root to the
 subject public key.
 
 The producer seals those JSON objects into one lowercase-hex
 `offline-bundle.hex` token. The consumer receives that one token and an
-independently provisioned trusted issuer registry. It does not receive the
-private identity claims. It decodes the token, recomputes its content hash,
+independently provisioned trusted issuer registry. The current demo discloses
+the identity claims inside the token, but no separate identity file is a
+consumer input. It decodes the token, recomputes its content hash,
 and verifies the signatures, request binding, expiry, issuer epoch, revocation
 status, proof of possession, identity-key binding, and RBAC decision offline.
 
@@ -41,6 +42,10 @@ outside the token so an attacker cannot make an arbitrary issuer trusted by
 including a public key in the token.
 
 This demo includes `identity_claims` so the consumer can inspect and verify
-the complete claims. A privacy-preserving deployment can omit that field and
-send only approved disclosures; a future zero-knowledge proof is required to
-prove undisclosed claim predicates without revealing the claims themselves.
+the complete claims, and it prints both an allowed request and a resource-
+scoped denial. A privacy-preserving deployment can omit full claims and rely
+only on the issuer-committed root plus disclosed roles; in that mode the
+consumer authenticates both issuer statements but cannot independently prove
+that a disclosed role was a member of the opaque claims, and must not claim
+that undisclosed attributes were verified. A future zero-knowledge proof is
+required to prove predicates over undisclosed claims.

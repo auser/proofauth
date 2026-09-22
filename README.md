@@ -63,7 +63,10 @@ full identity claims. The current complete demo intentionally includes them as
 `identity_claims: Some(...)` so the consumer can recompute and check the claims
 commitment. Thus the demo consumer receives no separate identity file, but its
 hex token does contain the claims. Proving predicates about undisclosed claims
-would require a future zero-knowledge extension.
+would require a future zero-knowledge extension. When full claims are omitted,
+the verifier authenticates the opaque issuer commitment and the separately
+issuer-signed disclosed roles; it cannot independently prove that those roles
+were members of the hidden claims.
 
 ## Issuer trust and offline verification
 
@@ -97,6 +100,22 @@ demo-data/request.json
 The command creates the directory when needed and replaces those three files
 when they already exist. Other files in the output directory are left alone.
 CLI file arguments use `@path` syntax.
+
+Inspect the official UOR addresses, validate request structure, and evaluate
+the policy without issuing a presentation:
+
+```sh
+cargo run -- identity-address @demo-data/identity.json
+cargo run -- policy-address @demo-data/policy.json
+cargo run -- validate-request @demo-data/request.json
+cargo run -- authorize \
+  @demo-data/identity.json \
+  @demo-data/policy.json \
+  @demo-data/request.json
+```
+
+The last two commands print `valid` and `allowed`, respectively. Validation is
+structural; `authorize` performs the hierarchical, scoped RBAC decision.
 
 ## Allowed request
 
@@ -138,14 +157,10 @@ Create a structurally valid request for a resource outside the policy rule:
 sed 's/invoice-8472/invoice-0000/' \
   demo-data/request.json > demo-data/denied-request.json
 
-cargo run -- issue \
+cargo run -- authorize \
   @demo-data/identity.json \
   @demo-data/policy.json \
-  @demo-data/denied-request.json \
-  --issuer-secret "$PROOFAUTH_DEMO_ISSUER_SECRET" \
-  --subject-secret "$PROOFAUTH_DEMO_SUBJECT_SECRET" \
-  --subject-key-id subject-key-1 \
-  --issuer-epoch 7
+  @demo-data/denied-request.json
 ```
 
 Expected application failure:
@@ -193,10 +208,25 @@ snapshot, and replay cache, then prints:
 
 ```text
 accepted: recipient=payment-control action=invoice.approve tenant=acme subject_key_id=subject-key-1
+denied: resource=invoice-0000 reason=authorization denied
+verified offline from one hex token plus locally trusted registry material
 ```
 
 The example keeps all artifacts in one directory only for local convenience.
 No server is contacted during the consumer step.
+
+The CLI can also sign a registry JSON document whose `signature` is initially
+empty, then verify the result with the independently pinned root public key:
+
+```sh
+cargo run -- registry-sign @unsigned-registry.json \
+  --root-secret "$REGISTRY_ROOT_SECRET" > registry.json
+cargo run -- registry-verify @registry.json \
+  --root-public "$REGISTRY_ROOT_PUBLIC"
+```
+
+Root private keys must not be passed on command lines in production; this CLI
+form is for local demonstrations and controlled tooling.
 
 ## Justfile commands
 
@@ -208,6 +238,7 @@ Run `just` to list recipes. The current recipes are:
 | `just fmt-check` | Check formatting without changing files. |
 | `just check` | Run `cargo check` for all targets and features. |
 | `just lint` | Run strict Clippy for all targets and features. |
+| `just audit` | Scan the lockfile with RustSec `cargo-audit` (install separately). |
 | `just test` | Run all-feature tests. |
 | `just doc-test` | Run Rust documentation tests. |
 | `just build` | Build all targets and features. |
@@ -256,18 +287,18 @@ Implemented and exercised in this repository:
   signed revocation snapshots, replay detection, and signed registries;
 - [x] decodable offline bundles with content-integrity checking;
 - [x] a generated `Cargo.lock` checked into the project;
-- [x] a committed UOR JSON reference vector with byte-for-byte tests; and
-- [x] local formatting, strict Clippy, and all-feature test commands.
+- [x] committed UOR, request, and signed-presentation canonicalization vectors
+  with byte-for-byte tests; and
+- [x] local `just release-check` and a RustSec audit with no known advisories.
 
 Before a v1.0 release:
 
 - [ ] run `just release-check` in clean CI on each supported real Rust toolchain;
-- [ ] commit the remaining request and presentation canonicalization vectors
-  required by [RELEASE.md](RELEASE.md);
 - [ ] complete an independent security review and resolve its findings; and
 - [ ] create the `v1.0.0` release tag only after every release-contract item is
   satisfied.
 
 See [DESIGN.md](DESIGN.md), [RELEASE.md](RELEASE.md), the
 [example notes](examples/README.md), and the
-[UOR reference vector](vectors/uor-json-reference.md).
+[UOR reference vector](vectors/uor-json-reference.md) and
+[canonicalization vectors](vectors/canonicalization.md).
