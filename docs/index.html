@@ -181,7 +181,11 @@
       .result strong { color: var(--cyan); }
       .result p { margin: 3px 0 0; color: var(--muted); }
 
-      .flow { display: grid; grid-template-columns: repeat(5, 1fr); margin: 20px 0 72px; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+      .network-note { display: grid; grid-template-columns: minmax(180px, .42fr) minmax(0, 1.58fr); gap: 24px; margin: 20px 0 12px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+      .network-note h2 { margin: 0; font-size: 1rem; }
+      .network-note p { margin: 0; color: var(--muted); }
+      .network-note p + p { margin-top: 10px; }
+      .flow { display: grid; grid-template-columns: repeat(5, 1fr); margin: 12px 0 72px; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
       .flow-item { position: relative; padding: 16px; border-right: 1px solid var(--line); }
       .flow-item:last-child { border-right: 0; }
       .flow-item span { display: block; margin-bottom: 7px; color: var(--muted); font-size: .75rem; font-weight: 600; }
@@ -250,7 +254,7 @@
         .demo { grid-template-columns: 1fr; }
         .story { border-right: 0; border-bottom: 1px solid var(--line); }
         pre { min-height: 300px; font-size: .8rem; }
-        .flow { grid-template-columns: 1fr; }
+        .network-note, .flow { grid-template-columns: 1fr; }
         .flow-item { border-right: 0; border-bottom: 1px solid var(--line); }
         .flow-item:last-child { border-bottom: 0; }
         .section-head, .proof-grid, .limits { grid-template-columns: 1fr; }
@@ -286,7 +290,7 @@
       <section class="intro" aria-labelledby="page-title">
         <p class="eyebrow">Demo / Payment approval</p>
         <h1 id="page-title">Offline authorization, step by step</h1>
-        <p class="lede">Priya wants to approve a payment. Follow the request from her client through policy evaluation, signing, transport, and offline verification.</p>
+        <p class="lede">Priya wants to approve a payment. Follow the request from her client through policy evaluation, signing, online submission, and offline verification.</p>
       </section>
 
       <section class="demo" aria-label="Interactive authorization example">
@@ -302,18 +306,26 @@
         </div>
 
         <div class="evidence">
-          <div class="evidence-head"><h2>Request sent to <code>payment-api</code></h2><span class="badge" id="decision-badge">ALLOWED</span></div>
+          <div class="evidence-head"><h2>Request addressed to <code>payment-api</code></h2><span class="badge" id="decision-badge">ALLOWED</span></div>
           <pre id="payload" aria-label="Authorization request JSON"></pre>
           <div class="result" id="result"><div><strong>Allowed</strong><p>The <code>finance.approver</code> role grants <code>payment.approve</code> for this tenant, workflow, and resource.</p></div></div>
         </div>
       </section>
 
+      <aside class="network-note" aria-labelledby="payment-api-title">
+        <h2 id="payment-api-title">What is <code>payment-api</code>?</h2>
+        <div>
+          <p>It is the application service that owns the payment operation and the consumer named by the request's <code>recipient</code>. Priya's client reaches it over a normal network connection and submits the hex bundle; the exact JSON request shown above is embedded inside that bundle.</p>
+          <p><strong>Offline</strong> describes what happens after the bundle arrives. <code>payment-api</code> verifies it using the bundled proof, a locally provisioned signed registry and pinned root key, and its replay cache. It does not call Acme's issuer, a registry server, or a revocation server while making the authorization decision. It may still read its own payment data and carry out the approved operation.</p>
+        </div>
+      </aside>
+
       <ol class="flow" aria-label="Proof creation and verification flow">
-        <li class="flow-item"><span>1. Request</span><strong>Priya clicks Approve</strong><small>Her client creates the recipient-bound request above.</small></li>
+        <li class="flow-item"><span>1. Request</span><strong>Priya clicks Approve</strong><small>Her client creates the request that will be embedded in the proof.</small></li>
         <li class="flow-item"><span>2. Policy</span><strong>RBAC allows it</strong><small>Role, action, tenant, workflow, resource, and time match.</small></li>
         <li class="flow-item"><span>3. Signatures</span><strong>Issuer and subject sign</strong><small>Acme attests to the identity; Priya proves possession.</small></li>
-        <li class="flow-item"><span>4. Transport</span><strong>The hex bundle is sent</strong><small>The signed JSON envelope is encoded as lowercase hex.</small></li>
-        <li class="flow-item"><span>5. Verification</span><strong>The consumer checks offline</strong><small>A registry and pinned root establish issuer trust.</small></li>
+        <li class="flow-item"><span>4. Online transport</span><strong>The client calls <code>payment-api</code></strong><small>The lowercase-hex bundle crosses the normal application connection.</small></li>
+        <li class="flow-item"><span>5. Offline verification</span><strong><code>payment-api</code> checks locally</strong><small>No outbound identity, registry, or revocation lookup is required.</small></li>
       </ol>
 
       <section aria-labelledby="proof-title">
