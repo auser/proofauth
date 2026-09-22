@@ -77,11 +77,11 @@ ci: fmt-check check lint test doc-test
 
 # Package the v1.0 release candidate under dist/ and write its checksum.
 archive:
+    test -z "$(git status --porcelain)" || { echo "error: archive requires a clean working tree" >&2; exit 1; }
     mkdir -p dist
-    tar -czf dist/proofauth-v1.0-candidate.tar.gz \
-        --exclude='target' --exclude='.git' \
-        Cargo.toml Cargo.lock Justfile README.md DESIGN.md RELEASE.md CHANGELOG.md \
-        src tests examples demo-data specs vectors .github
+    git archive --format=tar.gz \
+        --prefix=proofauth-v1.0.0/ \
+        --output=dist/proofauth-v1.0-candidate.tar.gz HEAD
     sha256sum dist/proofauth-v1.0-candidate.tar.gz > dist/proofauth-v1.0-candidate.SHA256SUMS.txt
 
 # Run every local v1.0 release gate, including the offline demo verification.
