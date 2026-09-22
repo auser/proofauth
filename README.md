@@ -249,7 +249,7 @@ Run `just` to list recipes. The current recipes are:
 | `just serve-registry` | Serve the demo registry at `127.0.0.1:8787`. |
 | `just bundle-verify` | Verify the demo bundle and registry at time `1050`. |
 | `just ci` | Run format check, check, lint, tests, and doc tests. |
-| `just archive` | Create the candidate tarball and SHA-256 sums file. |
+| `just archive` | Create the candidate tarball and checksum under `dist/`. |
 | `just release-check` | Run CI, build, examples, and bundle verification. |
 
 For the deterministic registry example, set the printed root key before the

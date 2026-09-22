@@ -10,8 +10,7 @@
 /demo-data/denied-request.json
 
 # Release artifacts
-/proofauth-v*.tar.gz
-/proofauth-v*.SHA256SUMS.txt
+/dist/
 
 # Local secrets and environment
 .env
