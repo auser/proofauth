@@ -13,10 +13,13 @@ example shows an inherited `payment.view` permission, a direct
 `payment.approve` permission, a resource-scoped denial, and an explicit
 suspension deny that overrides the allow. It demonstrates local RBAC evaluation
 without signatures so the identity, policy, request, and decision are easy to
-follow.
+follow. Its terminal output narrates every attempt and prints the exact JSON
+`AuthorizationRequest` delivered to the `payment-api` consumer.
 
 The permission names are chosen by the application. ProofAuth matches those
 strings and enforces the policy's tenant, workflow, resource, and role scopes.
+The complete creator/consumer example below demonstrates the different
+lowercase-hex bundle payload transported for offline verification.
 
 ## Creator and consumer flow
 

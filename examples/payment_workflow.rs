@@ -34,6 +34,12 @@ fn expect_denied(
     }
 }
 
+fn print_payload(request: &AuthorizationRequest) -> Result<(), serde_json::Error> {
+    println!("   Payload delivered to consumer `{}`:", request.recipient);
+    println!("   {}", serde_json::to_string(request)?);
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Acme's identity issuer says Priya is a finance approver. The policy below
     // makes that role inherit the less-privileged finance.viewer role.
@@ -93,28 +99,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
     };
 
+    println!("=== Acme payment desk ===");
+    println!("Acme's issuer identifies Priya as a finance.approver for tenant acme.");
+    println!("The policy lets approvers inherit payment viewing permission.");
+    println!();
+
     let view = payment_request("payment.view", "payment-8472");
+    println!("1. Priya opens payment-8472 before deciding whether to approve it.");
+    print_payload(&view)?;
     let view_decision = authorize(&priya, &view, &policy)?;
     println!(
-        "ALLOW Priya to view payment-8472 (inherited role: {})",
+        "   Decision: ALLOW through inherited role {}.",
         view_decision.matched_roles.join(", ")
     );
+    println!();
 
     let approve = payment_request("payment.approve", "payment-8472");
+    println!("2. Priya approves the payment she reviewed.");
+    print_payload(&approve)?;
     let approve_decision = authorize(&priya, &approve, &policy)?;
     println!(
-        "ALLOW Priya to approve payment-8472 (matched role: {})",
+        "   Decision: ALLOW through matched role {}.",
         approve_decision.matched_roles.join(", ")
     );
+    println!();
 
     let other_payment = payment_request("payment.approve", "payment-9000");
+    println!("3. Priya tries to approve payment-9000, which is outside her policy scope.");
+    print_payload(&other_payment)?;
     expect_denied(&priya, &other_payment, &policy)?;
-    println!("DENY Priya approval of payment-9000 (resource is outside policy scope)");
+    println!("   Decision: DENY because the resource is outside policy scope.");
+    println!();
 
     let mut suspended_priya = priya.clone();
     suspended_priya.roles.push("finance.suspended".into());
+    println!("4. Acme suspends Priya but her identity still contains the approver role.");
+    print_payload(&approve)?;
     expect_denied(&suspended_priya, &approve, &policy)?;
-    println!("DENY suspended Priya approval of payment-8472 (deny overrides allow)");
+    println!("   Decision: DENY because the suspension deny overrides the allow.");
+    println!();
+    println!("Each payload above is the exact AuthorizationRequest evaluated by ProofAuth.");
+    println!("Run `just demo` to see the signed .hex bundle delivered for offline verification.");
 
     Ok(())
 }
