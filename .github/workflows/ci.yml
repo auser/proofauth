@@ -13,18 +13,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - run: cargo fmt --all -- --check
-      - run: cargo check --all-targets --all-features
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-features
-      - run: cargo test --doc
-      - run: cargo build --all-targets --all-features
-      - run: cargo run --example creator
-      - run: cargo run --example registry_creator
-      - run: cargo run --example consumer
-      - run: >-
-          cargo run -- bundle-verify
-          @target/proofauth-demo/offline-bundle.hex
-          @target/proofauth-demo/registry.json
-          --root-public ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1
-          --now 1050
+      - run: cargo install just --version 1.46.0 --locked
+      - run: just release-check
+        env:
+          REGISTRY_ROOT_PUBLIC: ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1
