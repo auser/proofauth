@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Walk through a real ProofAuth offline authorization proof, from Priya's payment request to consumer verification.">
+    <title>ProofAuth — An offline authorization story</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #07111f;
+        --panel: #0d1b2c;
+        --panel-2: #12243a;
+        --line: #29425e;
+        --text: #f4f8fb;
+        --muted: #a7b7c8;
+        --cyan: #47e6d1;
+        --amber: #ffc766;
+        --red: #ff7272;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--ink);
+        color: var(--text);
+        font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button, a { font: inherit; }
+      button { color: inherit; }
+      a { color: var(--cyan); }
+      a:hover { color: #8df4e7; }
+      code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+      .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 72px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .02em; }
+      .mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--cyan); color: var(--cyan); }
+      .quiet { color: var(--muted); font-size: .875rem; }
+      .status { display: flex; gap: 8px; align-items: center; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 0 4px rgb(71 230 209 / .12); }
+      .header-links { display: flex; align-items: center; gap: 22px; }
+      .header-links a { color: var(--muted); text-decoration: none; font-size: .9rem; }
+      .header-links a:hover { color: var(--text); }
+
+      main { padding: 52px 0 80px; }
+      .intro { max-width: 760px; margin-bottom: 32px; }
+      .eyebrow { margin: 0 0 10px; color: var(--cyan); font: 700 .78rem/1.2 "SFMono-Regular", Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
+      h1 { max-width: 720px; margin: 0; font-size: clamp(2.25rem, 5vw, 4.8rem); line-height: .98; letter-spacing: -.055em; }
+      .lede { max-width: 680px; margin: 22px 0 0; color: var(--muted); font-size: 1.12rem; }
+
+      .demo {
+        display: grid;
+        grid-template-columns: minmax(260px, .8fr) minmax(0, 1.5fr);
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-shadow: 0 24px 70px rgb(0 0 0 / .28);
+      }
+
+      .story { padding: 28px; border-right: 1px solid var(--line); }
+      .story h2 { margin: 4px 0 12px; font-size: 1.55rem; line-height: 1.15; }
+      .story p { color: var(--muted); }
+      .scenario-list { display: grid; gap: 10px; margin-top: 28px; }
+      .scenario {
+        width: 100%;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .scenario:hover, .scenario:focus-visible, .scenario[aria-pressed="true"] { border-color: var(--cyan); background: rgb(71 230 209 / .07); outline: none; }
+      .scenario strong { display: block; }
+      .scenario span { color: var(--muted); font-size: .875rem; }
+
+      .evidence { min-width: 0; padding: 28px; }
+      .evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+      .evidence-head h2 { margin: 0; font-size: 1rem; }
+      .badge { padding: 5px 9px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 .75rem/1.2 "SFMono-Regular", Consolas, monospace; }
+      pre { min-height: 380px; margin: 0; padding: 22px; overflow: auto; border: 1px solid var(--line); background: #06101c; color: #dceaf5; font-size: .88rem; line-height: 1.65; tab-size: 2; }
+      .result { display: flex; gap: 12px; align-items: flex-start; margin-top: 18px; padding: 16px; border-left: 3px solid var(--cyan); background: var(--panel-2); }
+      .result strong { color: var(--cyan); }
+      .result p { margin: 3px 0 0; color: var(--muted); }
+
+      .flow { display: grid; grid-template-columns: repeat(5, 1fr); margin: 28px 0 84px; border: 1px solid var(--line); border-top: 0; }
+      .flow-item { position: relative; padding: 18px; border-right: 1px solid var(--line); }
+      .flow-item:last-child { border-right: 0; }
+      .flow-item span { display: block; margin-bottom: 8px; color: var(--cyan); font: 700 .75rem/1.2 "SFMono-Regular", Consolas, monospace; }
+      .flow-item strong { display: block; font-size: .94rem; }
+      .flow-item small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.4; }
+
+      .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .6fr); gap: 40px; align-items: end; margin-bottom: 28px; }
+      .section-head h2 { margin: 0; max-width: 720px; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1.03; letter-spacing: -.045em; }
+      .section-head p { margin: 0; color: var(--muted); }
+
+      .proof-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, .7fr); border: 1px solid var(--line); background: var(--panel); }
+      .proof-main { min-width: 0; padding: 26px; border-right: 1px solid var(--line); }
+      .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+      .tab { padding: 9px 12px; border: 1px solid var(--line); background: transparent; cursor: pointer; font-size: .84rem; }
+      .tab:hover, .tab:focus-visible, .tab[aria-selected="true"] { border-color: var(--amber); color: var(--amber); outline: none; }
+      .proof-code { height: 510px; min-height: 0; }
+      .token-key { color: #83d9ff; }
+      .token-string { color: #b7efa2; }
+      .token-number { color: #ffd47f; }
+      .token-boolean { color: #ef9fff; }
+      .token-null { color: #ff9f9f; }
+      .proof-side { padding: 26px; }
+      .proof-side h3 { margin: 4px 0 8px; font-size: 1.2rem; }
+      .proof-side > p { margin: 0 0 22px; color: var(--muted); }
+      .metric { padding: 15px 0; border-top: 1px solid var(--line); }
+      .metric span { display: block; margin-bottom: 5px; color: var(--muted); font-size: .8rem; }
+      .metric code { display: block; overflow-wrap: anywhere; color: var(--text); font-size: .78rem; }
+      .download-list { display: grid; gap: 10px; margin-top: 24px; }
+      .button-link { display: flex; justify-content: space-between; align-items: center; padding: 11px 13px; border: 1px solid var(--line); color: var(--text); text-decoration: none; cursor: pointer; background: transparent; text-align: left; }
+      .button-link:hover, .button-link:focus-visible { border-color: var(--cyan); color: var(--cyan); outline: none; }
+
+      .verification { margin: 30px 0 84px; padding: 26px; border: 1px solid var(--line); background: #06101c; }
+      .verification-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+      .verification h3 { margin: 0 0 6px; font-size: 1.35rem; }
+      .verification p { margin: 0; color: var(--muted); }
+      .check { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 .76rem/1.2 "SFMono-Regular", Consolas, monospace; }
+      .checks { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 24px; border: 1px solid var(--line); }
+      .check-item { padding: 16px; border-right: 1px solid var(--line); }
+      .check-item:last-child { border-right: 0; }
+      .check-item strong { display: block; font-size: .9rem; }
+      .check-item span { color: var(--muted); font-size: .8rem; }
+
+      .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 28px; background: var(--line); border: 1px solid var(--line); }
+      .limit-card { padding: 26px; background: var(--panel); }
+      .limit-card h3 { margin: 0 0 14px; font-size: 1.25rem; }
+      .limit-card ul { margin: 0; padding-left: 20px; color: var(--muted); }
+      .limit-card li + li { margin-top: 8px; }
+
+      .run { margin: 84px 0 0; padding: 30px; border: 1px solid var(--amber); background: rgb(255 199 102 / .045); }
+      .run h2 { margin: 0 0 8px; font-size: 1.8rem; }
+      .run p { margin: 0 0 20px; color: var(--muted); }
+      .run pre { min-height: 0; }
+      footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+
+      @media (max-width: 760px) {
+        header { align-items: flex-start; padding: 18px 0; }
+        .status { display: none; }
+        .header-links a:not(:last-child) { display: none; }
+        main { padding-top: 36px; }
+        .demo { grid-template-columns: 1fr; }
+        .story { border-right: 0; border-bottom: 1px solid var(--line); }
+        pre { min-height: 300px; font-size: .8rem; }
+        .flow { grid-template-columns: 1fr; }
+        .flow-item { border-right: 0; border-bottom: 1px solid var(--line); }
+        .flow-item:last-child { border-bottom: 0; }
+        .section-head, .proof-grid, .limits { grid-template-columns: 1fr; }
+        .proof-main { border-right: 0; border-bottom: 1px solid var(--line); }
+        .proof-code { height: 420px; }
+        .checks { grid-template-columns: 1fr 1fr; }
+        .check-item { border-bottom: 1px solid var(--line); }
+        .check-item:nth-child(2) { border-right: 0; }
+        .check-item:nth-last-child(-n + 2) { border-bottom: 0; }
+        footer { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="shell">
+      <div class="brand"><span class="mark" aria-hidden="true">PA</span> ProofAuth</div>
+      <div class="header-links">
+        <div class="status quiet"><span class="dot" aria-hidden="true"></span> Offline proof walkthrough</div>
+        <a href="https://github.com/auser/proofauth">Source on GitHub ↗</a>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">A payment approval, unpacked</p>
+        <h1 id="page-title">Priya wants to approve a payment.</h1>
+        <p class="lede">Follow the exact request her client sends and see why one scenario is allowed while two nearly identical requests are denied.</p>
+      </section>
+
+      <section class="demo" aria-label="Interactive authorization example">
+        <div class="story">
+          <p class="eyebrow">Choose the situation</p>
+          <h2 id="story-title">The payment she reviewed</h2>
+          <p id="story-copy">Priya reviewed payment-8472 and clicks “Approve.” Her client turns that intent into a recipient-bound request.</p>
+          <div class="scenario-list" role="group" aria-label="Authorization scenarios">
+            <button class="scenario" data-scenario="allowed" aria-pressed="true"><strong>Approve payment-8472</strong><span>Expected: allowed</span></button>
+            <button class="scenario" data-scenario="resource" aria-pressed="false"><strong>Approve payment-9000</strong><span>Expected: denied by scope</span></button>
+            <button class="scenario" data-scenario="suspended" aria-pressed="false"><strong>Suspended approver</strong><span>Expected: deny overrides allow</span></button>
+          </div>
+        </div>
+
+        <div class="evidence">
+          <div class="evidence-head"><h2>Request sent to <code>payment-api</code></h2><span class="badge" id="decision-badge">ALLOWED</span></div>
+          <pre id="payload" aria-label="Authorization request JSON"></pre>
+          <div class="result" id="result"><div><strong>Allowed</strong><p>The <code>finance.approver</code> role grants <code>payment.approve</code> for this tenant, workflow, and resource.</p></div></div>
+        </div>
+      </section>
+
+      <div class="flow" aria-label="Proof creation and verification flow">
+        <div class="flow-item"><span>01 · INTENT</span><strong>Priya clicks Approve</strong><small>Her client creates the exact recipient-bound request above.</small></div>
+        <div class="flow-item"><span>02 · POLICY</span><strong>RBAC allows it</strong><small>The role, action, tenant, workflow, resource, and time all match.</small></div>
+        <div class="flow-item"><span>03 · SIGN</span><strong>Issuer + subject sign</strong><small>Acme vouches for the identity; Priya proves possession of her key.</small></div>
+        <div class="flow-item"><span>04 · SEND</span><strong>One hex file travels</strong><small>The signed JSON envelope is encoded as lowercase hexadecimal.</small></div>
+        <div class="flow-item"><span>05 · VERIFY</span><strong>Consumer checks offline</strong><small>A local registry and pinned root key establish issuer trust.</small></div>
+      </div>
+
+      <section aria-labelledby="proof-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Open the actual proof</p>
+            <h2 id="proof-title">The bundle is data, signatures, and trust material—not a hash.</h2>
+          </div>
+          <p>This page ships the deterministic bundle created by the Rust payment example. Inspect each layer, then download the exact JSON or its lowercase-hex transport form.</p>
+        </div>
+
+        <div class="proof-grid">
+          <div class="proof-main">
+            <div class="tabs" role="tablist" aria-label="Proof contents">
+              <button class="tab" role="tab" data-view="summary" aria-selected="true">Proof summary</button>
+              <button class="tab" role="tab" data-view="request" aria-selected="false">Request</button>
+              <button class="tab" role="tab" data-view="policy" aria-selected="false">Policy</button>
+              <button class="tab" role="tab" data-view="presentation" aria-selected="false">Signed presentation</button>
+              <button class="tab" role="tab" data-view="registry" aria-selected="false">Trusted registry</button>
+              <button class="tab" role="tab" data-view="command" aria-selected="false">Verify command</button>
+            </div>
+            <pre class="proof-code" id="proof-code" role="tabpanel" aria-live="polite">Loading deterministic proof…</pre>
+          </div>
+
+          <aside class="proof-side" aria-label="Proof receipt">
+            <p class="eyebrow">Proof receipt</p>
+            <h3>What the consumer receives</h3>
+            <p>The consumer receives only the hex bundle from Priya. The registry and root key are provisioned separately as trust material.</p>
+            <div class="metric"><span>Canonical bundle</span><code id="bundle-size">Loading…</code></div>
+            <div class="metric"><span>Content hash</span><code id="content-hash">Loading…</code></div>
+            <div class="metric"><span>Authorization ID</span><code id="authorization-id">Loading…</code></div>
+            <div class="metric"><span>Pinned registry root</span><code>ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1</code></div>
+            <div class="download-list">
+              <button class="button-link" id="download-hex" type="button"><span>Download offline-bundle.hex</span><span aria-hidden="true">↓</span></button>
+              <a class="button-link" href="offline-bundle.json" download><span>Download bundle JSON</span><span aria-hidden="true">↓</span></a>
+              <a class="button-link" href="registry.json" download><span>Download trusted registry</span><span aria-hidden="true">↓</span></a>
+            </div>
+          </aside>
+        </div>
+
+        <div class="verification">
+          <div class="verification-head">
+            <div><h3>The Rust verifier returns <code>valid</code></h3><p>The browser explains the proof but does not pretend to perform Ed25519 verification. The checked-in Rust implementation performs these checks.</p></div>
+            <span class="check">CLI VERIFIED</span>
+          </div>
+          <div class="checks">
+            <div class="check-item"><strong>Issuer trusted</strong><span>Registry signature + pinned root</span></div>
+            <div class="check-item"><strong>Subject present</strong><span>Proof-of-possession signature</span></div>
+            <div class="check-item"><strong>Request bound</strong><span>Recipient + exact request hash</span></div>
+            <div class="check-item"><strong>Fresh and unused</strong><span>Expiry, revocation, replay cache</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="boundary-title">
+        <div class="section-head">
+          <div><p class="eyebrow">The security boundary</p><h2 id="boundary-title">What this evidence proves—and what it cannot.</h2></div>
+          <p>ProofAuth proves a cryptographic authorization statement relative to trusted inputs. It does not turn an issuer's claim into an external fact.</p>
+        </div>
+        <div class="limits">
+          <article class="limit-card">
+            <h3>It proves</h3>
+            <ul>
+              <li>A trusted issuer signed Priya's identity commitment.</li>
+              <li>Priya's subject key signed this recipient-bound presentation.</li>
+              <li>The disclosed role satisfies the local scoped policy.</li>
+              <li>The registry, revocation state, lifetime, and replay checks pass.</li>
+            </ul>
+          </article>
+          <article class="limit-card">
+            <h3>It does not prove</h3>
+            <ul>
+              <li>That Acme's real-world identity claim was truthful.</li>
+              <li>That private keys were protected before or after signing.</li>
+              <li>That an offline revocation snapshot is newer than the consumer's copy.</li>
+              <li>Confidentiality or zero-knowledge disclosure; hex is an encoding, not encryption.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="run" aria-labelledby="run-title">
+        <p class="eyebrow">Run the same story locally</p>
+        <h2 id="run-title">The webpage and CLI use the same deterministic proof.</h2>
+        <p>Clone the repository, create the payment bundle, then verify it with the signed registry and pinned root key.</p>
+        <pre><code>just payment-demo
+just examples
+export REGISTRY_ROOT_PUBLIC=ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1
+cargo run -- bundle-verify \
+  @target/proofauth-payment-demo/offline-bundle.hex \
+  @target/proofauth-demo/registry.json \
+  --root-public "$REGISTRY_ROOT_PUBLIC" \
+  --now 1050
+
+valid</code></pre>
+      </section>
+    </main>
+
+    <footer class="shell"><span>ProofAuth v1.0.0 · deterministic demonstration data</span><span>Apache-2.0 · <a href="https://github.com/auser/proofauth">read the source</a></span></footer>
+
+    <script>
+      const baseRequest = {
+        recipient: "payment-api",
+        tenant: "acme",
+        workflow: "ap-2026",
+        resource: "payment-8472",
+        action: "payment.approve",
+        nonce: Array(32).fill(9),
+        issued_at: 1000,
+        expires_at: 1100
+      };
+
+      const scenarios = {
+        allowed: {
+          title: "The payment she reviewed",
+          copy: "Priya reviewed payment-8472 and clicks “Approve.” Her client turns that intent into a recipient-bound request.",
+          request: baseRequest,
+          decision: "ALLOWED",
+          label: "Allowed",
+          reason: "The finance.approver role grants payment.approve for this tenant, workflow, and resource."
+        },
+        resource: {
+          title: "A different payment",
+          copy: "Priya asks to approve payment-9000. Her role is real, but the policy does not cover this resource.",
+          request: { ...baseRequest, resource: "payment-9000" },
+          decision: "DENIED",
+          label: "Denied",
+          reason: "The resource is outside Priya's policy scope."
+        },
+        suspended: {
+          title: "A suspension takes priority",
+          copy: "Priya's old approver role is still present, but Acme has also assigned the finance.suspended role.",
+          request: baseRequest,
+          decision: "DENIED",
+          label: "Denied",
+          reason: "A matching deny rule overrides the older allow rule."
+        }
+      };
+
+      let canonicalBundle = "";
+      let bundle = null;
+      let registry = null;
+      let activeProofView = "summary";
+
+      function bytesToHex(bytes) {
+        return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+
+      function syntaxHighlight(value) {
+        const json = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        const escaped = json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return escaped.replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:|"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, (match) => {
+          let type = "number";
+          if (/^"/.test(match)) type = /:$/.test(match) ? "key" : "string";
+          else if (/true|false/.test(match)) type = "boolean";
+          else if (/null/.test(match)) type = "null";
+          return `<span class="token-${type}">${match}</span>`;
+        });
+      }
+
+      function renderScenario(name) {
+        const scenario = scenarios[name];
+        const denied = scenario.decision === "DENIED";
+        document.querySelectorAll(".scenario").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.scenario === name)));
+        document.querySelector("#story-title").textContent = scenario.title;
+        document.querySelector("#story-copy").textContent = scenario.copy;
+        document.querySelector("#payload").innerHTML = syntaxHighlight(scenario.request);
+        const badge = document.querySelector("#decision-badge");
+        badge.textContent = scenario.decision;
+        badge.style.borderColor = denied ? "var(--red)" : "var(--cyan)";
+        badge.style.color = denied ? "var(--red)" : "var(--cyan)";
+        const result = document.querySelector("#result");
+        result.style.borderColor = denied ? "var(--red)" : "var(--cyan)";
+        result.innerHTML = `<div><strong style="color: ${denied ? "var(--red)" : "var(--cyan)"}">${scenario.label}</strong><p>${scenario.reason}</p></div>`;
+      }
+
+      function proofViews() {
+        if (!bundle || !registry) return {};
+        return {
+          summary: {
+            transport: {
+              canonical_json_bytes: canonicalBundle.length,
+              lowercase_hex_characters: canonicalBundle.length * 2,
+              contains: ["identity commitment", "policy", "request", "signed presentation", "revocation snapshot", "public keys"]
+            },
+            identity_commitment: {
+              issuer: bundle.identity_commitment.issuer,
+              issuer_key_id: bundle.identity_commitment.issuer_key_id,
+              subject_key_id: bundle.identity_commitment.key_id,
+              issuer_epoch: bundle.identity_commitment.issuer_epoch,
+              valid_until: bundle.identity_commitment.valid_until
+            },
+            authorization: {
+              recipient: bundle.presentation.recipient,
+              action: bundle.presentation.action,
+              resource: bundle.presentation.resource,
+              disclosed_roles: bundle.presentation.roles
+            }
+          },
+          request: bundle.request,
+          policy: bundle.policy,
+          presentation: bundle.presentation,
+          registry,
+          command: `cargo run -- bundle-verify \\\n+  @offline-bundle.hex \\\n+  @registry.json \\\n+  --root-public ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1 \\\n+  --now 1050\n\nvalid`
+        };
+      }
+
+      function renderProofView(name) {
+        activeProofView = name;
+        document.querySelectorAll(".tab").forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.view === name)));
+        const value = proofViews()[name];
+        const target = document.querySelector("#proof-code");
+        if (name === "command") target.textContent = value;
+        else target.innerHTML = syntaxHighlight(value);
+      }
+
+      async function loadProof() {
+        try {
+          const [bundleResponse, registryResponse] = await Promise.all([fetch("offline-bundle.json"), fetch("registry.json")]);
+          if (!bundleResponse.ok || !registryResponse.ok) throw new Error("proof assets were not available");
+          canonicalBundle = (await bundleResponse.text()).trimEnd();
+          bundle = JSON.parse(canonicalBundle);
+          registry = await registryResponse.json();
+          document.querySelector("#bundle-size").textContent = `${canonicalBundle.length.toLocaleString()} JSON bytes · ${(canonicalBundle.length * 2).toLocaleString()} hex characters`;
+          document.querySelector("#content-hash").textContent = bytesToHex(bundle.content_hash);
+          document.querySelector("#authorization-id").textContent = bytesToHex(bundle.presentation.authorization_id);
+          renderProofView(activeProofView);
+        } catch (error) {
+          document.querySelector("#proof-code").textContent = `Could not load the proof: ${error.message}`;
+          document.querySelector("#download-hex").disabled = true;
+        }
+      }
+
+      function downloadHex() {
+        if (!canonicalBundle) return;
+        const hex = Array.from(new TextEncoder().encode(canonicalBundle), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        const url = URL.createObjectURL(new Blob([`${hex}\n`], { type: "text/plain;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "offline-bundle.hex";
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.querySelectorAll(".scenario").forEach((button) => button.addEventListener("click", () => renderScenario(button.dataset.scenario)));
+      document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => renderProofView(button.dataset.view)));
+      document.querySelector("#download-hex").addEventListener("click", downloadHex);
+      renderScenario("allowed");
+      loadProof();
+    </script>
+  </body>
+</html>

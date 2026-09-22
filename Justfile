@@ -56,6 +56,22 @@ payment-demo:
 generate-example:
     cargo run -- generate-example --output examples/data
 
+# Validate the static GitHub Pages demo and its deterministic proof data.
+pages-check:
+    test -f docs/index.html
+    jq -e . docs/offline-bundle.json >/dev/null
+    jq -e . docs/registry.json >/dev/null
+    node -e 'const fs=require("fs"); const html=fs.readFileSync("docs/index.html", "utf8"); const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]; if (scripts.length !== 1) throw new Error("expected one inline script"); new Function(scripts[0][1]);'
+    cargo run --quiet -- bundle-verify \
+        "$(cargo run --quiet -- bundle-seal @docs/offline-bundle.json)" \
+        @docs/registry.json \
+        --root-public ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1 \
+        --now 1050
+
+# Serve the GitHub Pages demo locally at http://127.0.0.1:4173.
+pages-serve:
+    python3 -m http.server 4173 --directory docs
+
 # Verify the demo registry using the pinned root public key.
 registry-verify:
     cargo run -- registry-verify @target/proofauth-demo/registry.json \
@@ -72,8 +88,8 @@ bundle-verify:
         --root-public "$REGISTRY_ROOT_PUBLIC" \
         --now 1050
 
-# Run formatting, checking, linting, tests, and documentation tests.
-ci: fmt-check check lint test doc-test
+# Run formatting, checking, linting, tests, documentation tests, and the Pages proof check.
+ci: fmt-check check lint test doc-test pages-check
 
 # Package the v1.0 release candidate under dist/ and write its checksum.
 archive:

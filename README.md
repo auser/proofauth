@@ -5,6 +5,12 @@ authorization for people, agents, services, and workloads. It combines an
 issuer-signed identity commitment, subject proof-of-possession, hierarchical
 RBAC, scoped requests, revocation snapshots, and a signed issuer registry.
 
+**New to the project?** Open the
+[interactive payment-proof walkthrough](https://auser.github.io/proofauth/).
+It follows Priya's request from a click through RBAC, signing, hex transport,
+and offline consumer verification, with the actual deterministic bundle
+available to inspect and download.
+
 ## What ProofAuth proves
 
 Given trusted inputs, a verifier can establish offline that:
@@ -338,6 +344,8 @@ Run `just` to list recipes. The current recipes are:
 | `just doc-test` | Run Rust documentation tests. |
 | `just build` | Build all targets and features. |
 | `just generate-example` | Generate or replace inputs under `examples/data`. |
+| `just pages-check` | Validate the GitHub Pages demo and deterministic proof data. |
+| `just pages-serve` | Serve the GitHub Pages demo locally on port 4173. |
 | `just payment-demo` | Run the introductory payment-authorization story. |
 | `just examples` | Run the payment story and complete offline examples. |
 | `just demo` | Alias for `just examples`. |
