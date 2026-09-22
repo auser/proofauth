@@ -133,9 +133,11 @@ The policy lets approvers inherit payment viewing permission.
 It continues with the approve, out-of-scope, and suspended-user cases, printing
 the real request payload and decision for each one. It then signs the allowed
 approval using the existing ProofAuth commitment and presentation APIs, seals
-an `OfflineBundle`, verifies that it decodes, and prints the complete lowercase
-hex token sent to the offline consumer. That consumer must separately possess a
-trusted registry and independently pinned registry-root public key.
+an `OfflineBundle`, saves the complete lowercase-hex token to
+`target/proofauth-payment-demo/offline-bundle.hex`, reads it back, and verifies
+that it decodes. The terminal reports the path and token length instead of
+dumping thousands of hex characters. The offline consumer must separately
+possess a trusted registry and independently pinned registry-root public key.
 
 The action names are application-defined strings, not built-in ProofAuth
 permissions. Your application chooses names such as `payment.view` and

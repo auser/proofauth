@@ -11,8 +11,9 @@ use proofauth::{
 };
 use std::{
     collections::BTreeMap,
-    env,
+    env, fs,
     io::{self, IsTerminal},
+    path::PathBuf,
 };
 
 struct OutputStyle {
@@ -339,7 +340,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .seal();
     let encoded_bundle = encode_offline_bundle(&bundle)?;
-    decode_offline_bundle(&encoded_bundle)?;
+    let output_dir = PathBuf::from("target/proofauth-payment-demo");
+    let bundle_path = output_dir.join("offline-bundle.hex");
+    fs::create_dir_all(&output_dir)?;
+    fs::write(&bundle_path, format!("{encoded_bundle}\n"))?;
+    let stored_bundle = fs::read_to_string(&bundle_path)?;
+    decode_offline_bundle(stored_bundle.trim())?;
 
     println!(
         "{}",
@@ -353,17 +359,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         style.paint(
             "1;35",
             &format!(
-                "Complete lowercase-hex payload ({} characters):",
-                encoded_bundle.len()
+                "Saved the complete lowercase-hex payload to {} ({} characters).",
+                bundle_path.display(),
+                stored_bundle.trim().len()
             )
         )
     );
-    println!("   {}", style.paint("33", &encoded_bundle));
     println!();
     println!("Each payload above is the exact AuthorizationRequest evaluated by ProofAuth.");
-    println!(
-        "The final hex token is the complete signed payload delivered for offline verification."
-    );
+    println!("The saved hex token is the complete signed payload for offline verification.");
     println!(
         "The consumer also needs a trusted registry and independently pinned root public key."
     );

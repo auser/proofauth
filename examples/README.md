@@ -15,8 +15,9 @@ suspension deny that overrides the allow. It demonstrates local RBAC evaluation
 first so the identity, policy, request, and decision are easy to follow. Its
 terminal output narrates every attempt and prints formatted, syntax-colored
 JSON for the exact `AuthorizationRequest` delivered to the `payment-api`
-consumer. It finishes by signing the allowed request and printing the complete
-lowercase-hex offline bundle.
+consumer. It finishes by signing the allowed request, saving the lowercase-hex
+offline bundle, and reporting its path and length. The bundle is written to
+`target/proofauth-payment-demo/offline-bundle.hex`.
 
 The permission names are chosen by the application. ProofAuth matches those
 strings and enforces the policy's tenant, workflow, resource, and role scopes.
