@@ -8,10 +8,14 @@ Start with the accounts-payable story if you are new to ProofAuth:
 cargo run --example payment_workflow
 ```
 
-Priya wants to review and then approve a payment. Her client sends each intent
-as an `AuthorizationRequest` addressed to `payment-api`. Priya has the
-`finance.approver` role, which inherits `finance.viewer`. The example shows an
-inherited `payment.view` permission, a direct
+The example is written as a day-in-the-life story for a first-time reader.
+Priya sees a payment in her work queue, clicks “View payment,” reviews it, and
+then clicks “Approve payment.” Her client turns each click into an
+`AuthorizationRequest` addressed to `payment-api`. Only after showing the
+human action does the example explain the corresponding protocol object.
+
+Priya has the `finance.approver` role, which inherits `finance.viewer`. The
+example shows an inherited `payment.view` permission, a direct
 `payment.approve` permission, a resource-scoped denial, and an explicit
 suspension deny that overrides the allow. It demonstrates local RBAC evaluation
 first so the identity, policy, request, and decision are easy to follow. Its

@@ -156,7 +156,7 @@ fn print_payload(
     style: &OutputStyle,
 ) -> Result<(), serde_json::Error> {
     let label = format!(
-        "Priya sends this AuthorizationRequest to `{}`:",
+        "Her client sends this JSON request to `{}`:",
         request.recipient
     );
     println!("   {}", style.paint("1;35", &label));
@@ -246,10 +246,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_pretty_json(&identity_path, &priya)?;
     write_pretty_json(&policy_path, &policy)?;
 
-    println!("{}", style.paint("1;36", "=== Acme payment desk ==="));
-    println!("Priya wants to review payment-8472 and, if it is correct, approve it.");
-    println!("Her client sends recipient-bound JSON requests to the payment-api.");
-    println!("Acme's issuer has identified Priya as a finance.approver for tenant acme.");
+    println!(
+        "{}",
+        style.paint("1;36", "=== A day at Acme: Priya approves a payment ===")
+    );
+    println!("Priya works in accounts payable. A new payment, payment-8472, needs review.");
+    println!("The payment-api will show or approve it only after receiving verifiable proof.");
+    println!("Before today, Acme's issuer gave Priya the finance.approver role.");
     println!();
 
     let view = payment_request("payment.view", "payment-8472");
@@ -258,14 +261,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "1. Priya wants to view payment-8472 before deciding whether to approve it."
+            "Chapter 1 — Priya wants to see what she is being asked to approve."
         )
     );
+    println!("   She clicks “View payment” in her client.");
     print_payload(&view, &style)?;
     println!("   Saved request: {}", view_request_path.display());
+    println!("   ProofAuth compares Priya's identity with Acme's policy.");
     let view_decision = authorize(&priya, &view, &policy)?;
     let view_result = format!(
-        "Decision: ALLOW through inherited role {}.",
+        "Result: ALLOWED. Her approver role inherits viewer access through {}.",
         view_decision.matched_roles.join(", ")
     );
     println!("   {}", style.paint("1;32", &view_result));
@@ -277,14 +282,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "2. Priya now wants to approve the payment she reviewed."
+            "Chapter 2 — The details look right, so Priya wants to approve the payment."
         )
     );
+    println!("   She clicks “Approve payment” in her client, which creates a new request.");
     print_payload(&approve, &style)?;
     println!("   Saved request: {}", request_path.display());
+    println!("   ProofAuth evaluates the new action against the same identity and policy.");
     let approve_decision = authorize(&priya, &approve, &policy)?;
     let approve_result = format!(
-        "Decision: ALLOW through matched role {}.",
+        "Result: ALLOWED. The policy grants approval to {}.",
         approve_decision.matched_roles.join(", ")
     );
     println!("   {}", style.paint("1;32", &approve_result));
@@ -294,8 +301,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "3. Priya's client prepares proof for the allowed approval request."
+            "Chapter 3 — Priya needs more than an ALLOWED message. She needs portable proof."
         )
+    );
+    println!(
+        "   Her client gathers the identity, policy, and exact approval request behind the decision."
     );
     println!("   Identity claims: {}", identity_path.display());
     println!("   Policy:          {}", policy_path.display());
@@ -362,11 +372,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "4. The issuer and Priya's client sign, bundle, and hex-encode the proof."
+            "Chapter 4 — The proof is signed, packed, and made ready to send."
         )
     );
     println!(
-        "   This deterministic demo combines issuer and subject operations; production separates their keys."
+        "   Acme's issuer vouches for Priya's identity; Priya's client proves possession of her key."
+    );
+    println!(
+        "   The demo performs both operations together; production keeps the two private keys separate."
     );
     println!(
         "   Signed canonical bundle JSON: {} ({} bytes)",
@@ -385,28 +398,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     );
     println!("   Verified: the hex decodes to the saved bundle JSON.");
-    println!("   Priya now sends only offline-bundle.hex to the payment-api consumer.");
+    println!("   Priya now has one file to send: offline-bundle.hex.");
+    println!("   payment-api can verify it later without contacting Acme's issuer.");
     println!();
 
     println!(
         "{}",
-        style.paint("1;36", "=== What if access should be denied? ===")
+        style.paint("1;36", "=== Two guardrails in the same story ===")
     );
     let other_payment = payment_request("payment.approve", "payment-9000");
     println!(
         "{}",
         style.paint(
             "1;34",
-            "5. Priya wants to approve payment-9000, which is outside her policy scope."
+            "Guardrail 1 — Priya asks to approve a different payment, payment-9000."
         )
     );
+    println!("   Her role is valid, but this payment is outside the resource named by the policy.");
     print_payload(&other_payment, &style)?;
     expect_denied(&priya, &other_payment, &policy)?;
     println!(
         "   {}",
         style.paint(
             "1;31",
-            "Decision: DENY because the resource is outside policy scope."
+            "Result: DENIED. The resource is outside Priya's policy scope."
         )
     );
     println!();
@@ -417,21 +432,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         style.paint(
             "1;34",
-            "6. After Acme suspends Priya, she sends the original approval request again."
+            "Guardrail 2 — Acme suspends Priya, but her old approver role is still present."
         )
     );
+    println!("   She sends the original approval request again.");
     print_payload(&approve, &style)?;
     expect_denied(&suspended_priya, &approve, &policy)?;
     println!(
         "   {}",
         style.paint(
             "1;31",
-            "Decision: DENY because the suspension deny overrides the allow."
+            "Result: DENIED. The suspension rule overrides the older allow rule."
         )
     );
     println!();
 
-    println!("Producer flow:");
+    println!("The whole happy-path story in one line:");
     println!("  identity.json + policy.json + request.json");
     println!("    -> signed offline-bundle.json");
     println!("    -> offline-bundle.hex");

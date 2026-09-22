@@ -83,21 +83,20 @@ contacts no identity, policy, registry, or revocation server.
 
 ## Start here: the Acme payment desk
 
-Imagine that Priya works in Acme's accounts-payable team. She wants to review
-payment `payment-8472` and, if it is correct, approve it. Her client expresses
-each intent as a recipient-bound JSON request sent to `payment-api`. Priya must
-not approve payments outside her assigned workflow, and an explicit suspension
-deny must win even if her identity still contains the approver role.
+No protocol knowledge is required for this example. Imagine that Priya works in
+Acme's accounts-payable team. A new payment appears in her work queue. She wants
+to review it and, if everything looks right, approve it. The receiving system
+must be able to verify her permission even when it cannot contact Acme's issuer.
 
-ProofAuth represents that story with five pieces:
+The cast:
 
-| Piece | In this story |
+| Character | Role in the story |
 | --- | --- |
-| Identity claims | Acme's issuer says Priya belongs to tenant `acme` and has role `finance.approver`. |
-| Role hierarchy | `finance.approver` inherits `finance.viewer`, so approvers can also view. |
-| Policy rules | View and approve rules are limited to workflow `ap-2026` and resource `payment-8472`. |
-| Request | Priya's client sends `payment.view` or `payment.approve`, addressed to `payment-api`. |
-| Decision | Matching allow rules grant access, but a matching `finance.suspended` deny overrides them. |
+| Priya | The accounts-payable employee who wants to view and approve a payment. |
+| Priya's client | Turns her clicks into JSON requests and proves she holds her subject key. |
+| Acme's issuer | Vouches that Priya belongs to `acme` and has the `finance.approver` role. |
+| Acme's policy | Lets approvers view and approve `payment-8472` in workflow `ap-2026`. |
+| `payment-api` | Receives Priya's proof and decides whether to honor the requested action. |
 
 Run the story:
 
@@ -106,19 +105,21 @@ just payment-demo
 # equivalent: cargo run --example payment_workflow
 ```
 
-The program starts with what Priya wants to do, then prints the formatted,
-syntax-colored `AuthorizationRequest` her client sends to `payment-api`.
+The program reads like the story above. It starts with Priya clicking “View
+payment,” then shows the formatted, syntax-colored JSON her client sends to
+`payment-api`.
 Colors are enabled on an interactive terminal and disabled when output is
 redirected or `NO_COLOR` is set. For example, the first decision includes:
 
 ```text
-=== Acme payment desk ===
-Priya wants to review payment-8472 and, if it is correct, approve it.
-Her client sends recipient-bound JSON requests to the payment-api.
-Acme's issuer has identified Priya as a finance.approver for tenant acme.
+=== A day at Acme: Priya approves a payment ===
+Priya works in accounts payable. A new payment, payment-8472, needs review.
+The payment-api will show or approve it only after receiving verifiable proof.
+Before today, Acme's issuer gave Priya the finance.approver role.
 
-1. Priya wants to view payment-8472 before deciding whether to approve it.
-   Priya sends this AuthorizationRequest to `payment-api`:
+Chapter 1 — Priya wants to see what she is being asked to approve.
+   She clicks “View payment” in her client.
+   Her client sends this JSON request to `payment-api`:
    {
      "recipient": "payment-api",
      "tenant": "acme",
@@ -129,8 +130,12 @@ Acme's issuer has identified Priya as a finance.approver for tenant acme.
      "issued_at": 1000,
      "expires_at": 1100
    }
-   Decision: ALLOW through inherited role finance.viewer.
+   Result: ALLOWED. Her approver role inherits viewer access through finance.viewer.
 ```
+
+In plain language, the request says: “Priya wants `payment-api` to let her view
+`payment-8472` for Acme's `ap-2026` workflow, during this short time window.”
+The nonce makes this request distinct from another otherwise-identical request.
 
 After the view is allowed, Priya sends a second request to approve the payment.
 The happy path remains uninterrupted through signing and transport creation;
@@ -165,11 +170,11 @@ permissions. Your application chooses names such as `payment.view` and
 `payment.approve`; ProofAuth checks them against `PermissionRule.permission`
 along with the tenant, workflow, resource, identity lifetime, and role graph.
 
-Steps one and two follow Priya's view and approval requests. Steps three and
-four show exactly how the allowed approval becomes the `.hex` file she sends.
-Steps five and six demonstrate denial branches. The complete creator/consumer
-flow below verifies this kind of bundle using a signed registry, pinned
-registry-root key, and local trust material.
+Chapters one and two follow Priya's view and approval requests. Chapters three
+and four show why an allow decision alone is insufficient and exactly how it
+becomes the `.hex` file she sends. The two guardrails then demonstrate denial
+branches. The complete creator/consumer flow below verifies this kind of bundle
+using a signed registry, pinned registry-root key, and local trust material.
 
 ## Generate starter JSON
 
