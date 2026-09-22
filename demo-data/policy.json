@@ -1,0 +1,28 @@
+{
+  "version": "1",
+  "roles": [
+    {
+      "name": "finance.approver",
+      "parents": [
+        "finance"
+      ]
+    }
+  ],
+  "rules": {
+    "finance": [
+      {
+        "permission": "invoice.approve",
+        "effect": "Allow",
+        "tenants": [
+          "acme"
+        ],
+        "workflows": [
+          "ap-2026"
+        ],
+        "resources": [
+          "invoice-8472"
+        ]
+      }
+    ]
+  }
+}

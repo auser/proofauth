@@ -1,0 +1,21 @@
+[package]
+name = "proofauth"
+version = "0.1.0"
+edition = "2021"
+description = "Privacy-preserving, offline-verifiable authorization presentations"
+license = "Apache-2.0"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hex = "0.4"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_jcs = "0.1"
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+uor-addr = { git = "https://github.com/uoR-Foundation/uor-addr.git", package = "uor-addr" }
+
+[dev-dependencies]
+hex = "0.4"

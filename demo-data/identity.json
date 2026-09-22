@@ -1,0 +1,15 @@
+{
+  "subject_type": "human",
+  "tenant_ids": [
+    "acme"
+  ],
+  "roles": [
+    "finance.approver"
+  ],
+  "attributes": {
+    "clearance": "confidential"
+  },
+  "key_id": "subject-key-1",
+  "valid_until": 1200,
+  "issuer_epoch": 7
+}
