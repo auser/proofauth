@@ -87,7 +87,7 @@
       .evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
       .evidence-head h2 { margin: 0; font-size: 1rem; }
       .badge { padding: 5px 9px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 .75rem/1.2 "SFMono-Regular", Consolas, monospace; }
-      pre { min-height: 380px; margin: 0; padding: 22px; overflow: auto; border: 1px solid var(--line); background: #06101c; color: #dceaf5; font-size: .88rem; line-height: 1.65; tab-size: 2; }
+      pre { min-height: 380px; margin: 0; padding: 22px; overflow: auto; border: 1px solid var(--line); background: #06101c; color: #dceaf5; font-size: .88rem; line-height: 1.65; tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
       .result { display: flex; gap: 12px; align-items: flex-start; margin-top: 18px; padding: 16px; border-left: 3px solid var(--cyan); background: var(--panel-2); }
       .result strong { color: var(--cyan); }
       .result p { margin: 3px 0 0; color: var(--muted); }
@@ -358,8 +358,19 @@ valid</code></pre>
         return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
       }
 
+      function formatJson(value) {
+        return JSON.stringify(value, null, 2).replace(
+          /\[\n((?:\s+(?:"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null),?\n)+)\s*\]/g,
+          (block, body) => {
+            const values = body.trim().split("\n").map((line) => line.trim().replace(/,$/, ""));
+            const inline = `[${values.join(", ")}]`;
+            return inline.length <= 100 ? inline : block;
+          }
+        );
+      }
+
       function syntaxHighlight(value) {
-        const json = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        const json = typeof value === "string" ? value : formatJson(value);
         const escaped = json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         return escaped.replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:|"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, (match) => {
           let type = "number";
