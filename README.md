@@ -106,7 +106,7 @@ just payment-demo
 ```
 
 The program narrates each step and prints formatted, syntax-colored JSON for
-the exact `AuthorizationRequest` delivered to the `payment-api` consumer.
+the exact `AuthorizationRequest` bound to the `payment-api` consumer.
 Colors are enabled on an interactive terminal and disabled when output is
 redirected or `NO_COLOR` is set. For example, the first decision includes:
 
@@ -116,7 +116,7 @@ Acme's issuer identifies Priya as a finance.approver for tenant acme.
 The policy lets approvers inherit payment viewing permission.
 
 1. Priya opens payment-8472 before deciding whether to approve it.
-   Payload delivered to consumer `payment-api`:
+   AuthorizationRequest JSON bound to consumer `payment-api`:
    {
      "recipient": "payment-api",
      "tenant": "acme",
@@ -130,24 +130,38 @@ The policy lets approvers inherit payment viewing permission.
    Decision: ALLOW through inherited role finance.viewer.
 ```
 
-It continues with the approve, out-of-scope, and suspended-user cases, printing
-the real request payload and decision for each one. It then signs the allowed
-approval using the existing ProofAuth commitment and presentation APIs, seals
-an `OfflineBundle`, saves the complete lowercase-hex token to
-`target/proofauth-payment-demo/offline-bundle.hex`, reads it back, and verifies
-that it decodes. The terminal reports the path and token length instead of
-dumping thousands of hex characters. The offline consumer must separately
+It continues with the approve, out-of-scope, and suspended-user cases. For the
+allowed approval, the demo saves the producer inputs and makes the conversion
+chain explicit:
+
+```text
+target/proofauth-payment-demo/identity.json
+  + target/proofauth-payment-demo/policy.json
+  + target/proofauth-payment-demo/request.json
+  + issuer/subject signatures and revocation state
+    -> target/proofauth-payment-demo/offline-bundle.json
+    -> target/proofauth-payment-demo/offline-bundle.hex
+```
+
+The request JSON is not simply renamed or hex-encoded by itself. It is embedded
+inside an `OfflineBundle` with the identity commitment, policy, signed
+presentation, revocation snapshot, and public verification keys. The demo saves
+the exact canonical bundle JSON bytes, hex-encodes those bytes, reads both files
+back, and proves that the hex decodes to the saved JSON. Priya sends only
+`offline-bundle.hex` to the `payment-api` consumer. The consumer must separately
 possess a trusted registry and independently pinned registry-root public key.
+For readability the deterministic example performs issuer and subject
+operations in one process; production must keep their private keys separate.
 
 The action names are application-defined strings, not built-in ProofAuth
 permissions. Your application chooses names such as `payment.view` and
 `payment.approve`; ProofAuth checks them against `PermissionRule.permission`
 along with the tenant, workflow, resource, identity lifetime, and role graph.
 
-The first four steps isolate the local RBAC decision. The fifth performs the
-producer-side signing and bundling. The complete creator/consumer flow below
-then verifies this kind of bundle using a signed registry, pinned registry-root
-key, and local trust material.
+The first four steps isolate the local RBAC decision. Steps five and six show
+the producer inputs, signing, bundling, and transport encoding. The complete
+creator/consumer flow below then verifies this kind of bundle using a signed
+registry, pinned registry-root key, and local trust material.
 
 ## Generate starter JSON
 

@@ -9,11 +9,12 @@ use proofauth::{
     issue_identity_commitment, issue_presentation, AuthorizationRequest, Effect, Error,
     IdentityClaims, OfflineBundle, PermissionRule, Policy, RevocationSnapshot, Role,
 };
+use serde::Serialize;
 use std::{
     collections::BTreeMap,
     env, fs,
     io::{self, IsTerminal},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 struct OutputStyle {
@@ -154,12 +155,23 @@ fn print_payload(
     request: &AuthorizationRequest,
     style: &OutputStyle,
 ) -> Result<(), serde_json::Error> {
-    let label = format!("Payload delivered to consumer `{}`:", request.recipient);
+    let label = format!(
+        "AuthorizationRequest JSON bound to consumer `{}`:",
+        request.recipient
+    );
     println!("   {}", style.paint("1;35", &label));
     for line in colorize_json(&formatted_request(request)?, style).lines() {
         println!("   {line}");
     }
     Ok(())
+}
+
+fn write_pretty_json<T: Serialize>(path: &Path, value: &T) -> Result<(), io::Error> {
+    let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| {
+        io::Error::other(format!("failed to serialize {}: {error}", path.display()))
+    })?;
+    bytes.push(b'\n');
+    fs::write(path, bytes)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -298,6 +310,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!();
 
+    let output_dir = PathBuf::from("target/proofauth-payment-demo");
+    let identity_path = output_dir.join("identity.json");
+    let policy_path = output_dir.join("policy.json");
+    let request_path = output_dir.join("request.json");
+    let bundle_json_path = output_dir.join("offline-bundle.json");
+    let bundle_hex_path = output_dir.join("offline-bundle.hex");
+    fs::create_dir_all(&output_dir)?;
+    write_pretty_json(&identity_path, &priya)?;
+    write_pretty_json(&policy_path, &policy)?;
+    write_pretty_json(&request_path, &approve)?;
+
+    println!(
+        "{}",
+        style.paint(
+            "1;34",
+            "5. Priya's producer saves the approved request and its authorization inputs."
+        )
+    );
+    println!("   Identity claims: {}", identity_path.display());
+    println!("   Policy:          {}", policy_path.display());
+    println!("   Initial request: {}", request_path.display());
+    println!(
+        "   The request is not hex-encoded alone; it becomes the request field in a signed bundle."
+    );
+    println!();
+
     let issuer = SigningKey::from_bytes(&[1; 32]);
     let subject = SigningKey::from_bytes(&[2; 32]);
     let commitment = issue_identity_commitment(
@@ -340,34 +378,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .seal();
     let encoded_bundle = encode_offline_bundle(&bundle)?;
-    let output_dir = PathBuf::from("target/proofauth-payment-demo");
-    let bundle_path = output_dir.join("offline-bundle.hex");
-    fs::create_dir_all(&output_dir)?;
-    fs::write(&bundle_path, format!("{encoded_bundle}\n"))?;
-    let stored_bundle = fs::read_to_string(&bundle_path)?;
-    decode_offline_bundle(stored_bundle.trim())?;
+    let canonical_bundle_json = hex::decode(&encoded_bundle)?;
+    fs::write(&bundle_json_path, &canonical_bundle_json)?;
+    fs::write(&bundle_hex_path, format!("{encoded_bundle}\n"))?;
+
+    let stored_bundle_json = fs::read(&bundle_json_path)?;
+    let stored_bundle_hex = fs::read_to_string(&bundle_hex_path)?;
+    if hex::encode(&stored_bundle_json) != stored_bundle_hex.trim() {
+        return Err(io::Error::other("saved hex does not encode the saved bundle JSON").into());
+    }
+    decode_offline_bundle(stored_bundle_hex.trim())?;
 
     println!(
         "{}",
         style.paint(
             "1;34",
-            "5. The producer signs the approved request and sends one offline bundle."
+            "6. The producer signs the request, builds the bundle, and hex-encodes it."
         )
+    );
+    println!(
+        "   This deterministic demo combines issuer and subject operations; production separates their keys."
+    );
+    println!(
+        "   Signed canonical bundle JSON: {} ({} bytes)",
+        bundle_json_path.display(),
+        stored_bundle_json.len()
     );
     println!(
         "   {}",
         style.paint(
             "1;35",
             &format!(
-                "Saved the complete lowercase-hex payload to {} ({} characters).",
-                bundle_path.display(),
-                stored_bundle.trim().len()
+                "Hex sent to `payment-api`: {} ({} characters).",
+                bundle_hex_path.display(),
+                stored_bundle_hex.trim().len()
             )
         )
     );
+    println!("   Verified: the hex decodes to the saved bundle JSON.");
     println!();
-    println!("Each payload above is the exact AuthorizationRequest evaluated by ProofAuth.");
-    println!("The saved hex token is the complete signed payload for offline verification.");
+    println!("Producer flow:");
+    println!("  identity.json + policy.json + request.json");
+    println!("    -> signed offline-bundle.json");
+    println!("    -> offline-bundle.hex");
+    println!("Priya sends only offline-bundle.hex to the payment-api consumer.");
     println!(
         "The consumer also needs a trusted registry and independently pinned root public key."
     );

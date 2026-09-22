@@ -14,10 +14,14 @@ example shows an inherited `payment.view` permission, a direct
 suspension deny that overrides the allow. It demonstrates local RBAC evaluation
 first so the identity, policy, request, and decision are easy to follow. Its
 terminal output narrates every attempt and prints formatted, syntax-colored
-JSON for the exact `AuthorizationRequest` delivered to the `payment-api`
-consumer. It finishes by signing the allowed request, saving the lowercase-hex
-offline bundle, and reporting its path and length. The bundle is written to
-`target/proofauth-payment-demo/offline-bundle.hex`.
+JSON for the exact `AuthorizationRequest` bound to the `payment-api` consumer.
+For the allowed approval, it saves `identity.json`, `policy.json`, and
+`request.json`; creates the signed canonical `offline-bundle.json`; and
+hex-encodes those exact bundle bytes as `offline-bundle.hex`. All five files are
+written under `target/proofauth-payment-demo/`. The terminal explains that
+Priya sends only the `.hex` file to the consumer. The deterministic example
+combines issuer and subject operations in one process; a production deployment
+must keep those private keys separate.
 
 The permission names are chosen by the application. ProofAuth matches those
 strings and enforces the policy's tenant, workflow, resource, and role scopes.
