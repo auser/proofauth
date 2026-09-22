@@ -293,7 +293,8 @@ Implemented and exercised in this repository:
 
 Before a v1.0 release:
 
-- [ ] run `just release-check` in clean CI on each supported real Rust toolchain;
+- [x] run `just release-check` in clean CI on the supported stable Rust
+  toolchain ([CI run](https://github.com/auser/proofauth/actions/runs/35783212486));
 - [ ] complete an independent security review and resolve its findings; and
 - [ ] create the `v1.0.0` release tag only after every release-contract item is
   satisfied.
