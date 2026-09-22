@@ -37,8 +37,9 @@ doc-test:
 build:
     cargo build --all-targets --all-features
 
-# Run the creator, registry creator, and consumer examples in order.
+# Run every narrative and offline protocol example in order.
 examples:
+    cargo run --example payment_workflow
     cargo run --example creator
     cargo run --example registry_creator
     cargo run --example consumer
@@ -46,6 +47,10 @@ examples:
 # Run the complete deterministic offline demonstration.
 demo:
     just examples
+
+# Run the introductory Acme payment-authorization story.
+payment-demo:
+    cargo run --example payment_workflow
 
 # Generate or replace starter protocol JSON under examples/data.
 generate-example:

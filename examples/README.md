@@ -1,4 +1,24 @@
-# Creator and consumer example
+# ProofAuth examples
+
+## Payment authorization story
+
+Start with the accounts-payable story if you are new to ProofAuth:
+
+```sh
+cargo run --example payment_workflow
+```
+
+Priya has the `finance.approver` role, which inherits `finance.viewer`. The
+example shows an inherited `payment.view` permission, a direct
+`payment.approve` permission, a resource-scoped denial, and an explicit
+suspension deny that overrides the allow. It demonstrates local RBAC evaluation
+without signatures so the identity, policy, request, and decision are easy to
+follow.
+
+The permission names are chosen by the application. ProofAuth matches those
+strings and enforces the policy's tenant, workflow, resource, and role scopes.
+
+## Creator and consumer flow
 
 This is the smallest complete ProofAuth flow.
 

@@ -81,6 +81,49 @@ before trusting any issuer entry. The registry and a sufficiently fresh signed
 revocation snapshot can be provisioned ahead of time; bundle verification then
 contacts no identity, policy, registry, or revocation server.
 
+## Start here: the Acme payment desk
+
+Imagine that Priya works in Acme's accounts-payable team. She needs to view a
+payment before approving it, but she must not approve payments outside her
+assigned workflow. If her account is suspended, an explicit deny must win even
+though she still has the approver role.
+
+ProofAuth represents that story with five pieces:
+
+| Piece | In this story |
+| --- | --- |
+| Identity claims | Acme's issuer says Priya belongs to tenant `acme` and has role `finance.approver`. |
+| Role hierarchy | `finance.approver` inherits `finance.viewer`, so approvers can also view. |
+| Policy rules | View and approve rules are limited to workflow `ap-2026` and resource `payment-8472`. |
+| Request | The payment API asks whether Priya may perform `payment.view` or `payment.approve`. |
+| Decision | Matching allow rules grant access, but a matching `finance.suspended` deny overrides them. |
+
+Run the story:
+
+```sh
+just payment-demo
+# equivalent: cargo run --example payment_workflow
+```
+
+Expected output:
+
+```text
+ALLOW Priya to view payment-8472 (inherited role: finance.viewer)
+ALLOW Priya to approve payment-8472 (matched role: finance.approver)
+DENY Priya approval of payment-9000 (resource is outside policy scope)
+DENY suspended Priya approval of payment-8472 (deny overrides allow)
+```
+
+The action names are application-defined strings, not built-in ProofAuth
+permissions. Your application chooses names such as `payment.view` and
+`payment.approve`; ProofAuth checks them against `PermissionRule.permission`
+along with the tenant, workflow, resource, identity lifetime, and role graph.
+
+This example demonstrates the local RBAC decision. A real producer then calls
+`issue` to sign an allowed decision and packages it into an offline bundle.
+The consumer verifies that bundle using its pinned registry-root key and local
+trust material. The complete signed creator/consumer flow appears below.
+
 ## Generate starter JSON
 
 From the project root, generate all three producer inputs in `./demo-data`:
@@ -243,7 +286,8 @@ Run `just` to list recipes. The current recipes are:
 | `just doc-test` | Run Rust documentation tests. |
 | `just build` | Build all targets and features. |
 | `just generate-example` | Generate or replace inputs under `examples/data`. |
-| `just examples` | Run creator, registry creator, and consumer in order. |
+| `just payment-demo` | Run the introductory payment-authorization story. |
+| `just examples` | Run the payment story and complete offline examples. |
 | `just demo` | Alias for `just examples`. |
 | `just registry-verify` | Verify the demo registry using `REGISTRY_ROOT_PUBLIC`. |
 | `just serve-registry` | Serve the demo registry at `127.0.0.1:8787`. |
